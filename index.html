@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tuya Energy Dashboard</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@24,400,0,0" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="loader" class="loader-overlay">
+        <div class="spinner"></div>
+        <p>Syncing Tuya Data...</p>
+    </div>
+
+    <div class="dashboard-container">
+        <header class="header">
+            <div class="title-area">
+                <h1>Energy <span>Analytics</span></h1>
+                <p id="billing-cycle-date">Billing Cycle: --</p>
+            </div>
+            <div class="header-actions">
+                <button id="theme-toggle" class="icon-btn" title="Toggle Theme">
+                    <span class="material-symbols-rounded" id="theme-icon">light_mode</span>
+                </button>
+                <div class="status-badge" id="sync-status">
+                    <span class="material-symbols-rounded">wifi</span>
+                    <div>
+                        <span>Live Data</span>
+                        <small id="last-sync-time">--</small>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <section class="metrics-grid">
+            <div class="metric-card live-power">
+                <div class="card-header">
+                    <span class="material-symbols-rounded">bolt</span>
+                    <h3>Real-time Power</h3>
+                </div>
+                <div class="card-body">
+                    <h2 id="live-watt">--</h2>
+                    <span class="unit">Watt</span>
+                </div>
+                <div class="card-footer">
+                    <p id="power-status">Analyzing...</p>
+                </div>
+            </div>
+
+            <div class="metric-card">
+                <div class="card-header">
+                    <span class="material-symbols-rounded">account_balance_wallet</span>
+                    <h3>Current Bill So Far</h3>
+                </div>
+                <div class="card-body">
+                    <h2 id="current-bill">--</h2>
+                    <span class="unit">THB</span>
+                </div>
+            </div>
+
+            <div class="metric-card">
+                <div class="card-header">
+                    <span class="material-symbols-rounded">show_chart</span>
+                    <h3>Estimated Final Bill</h3>
+                </div>
+                <div class="card-body">
+                    <h2 id="est-bill">--</h2>
+                    <span class="unit">THB</span>
+                </div>
+                <div class="card-footer" style="margin-top: auto;">
+                    <p id="budget-warning" style="display: none; color: var(--glow-red);"><span class="material-symbols-rounded" style="vertical-align: middle; font-size: 1rem;">warning</span> Over Budget!</p>
+                </div>
+            </div>
+
+            <div class="metric-card solar-roi">
+                <div class="card-header">
+                    <span class="material-symbols-rounded">solar_power</span>
+                    <select id="solarSizeFilter" class="card-title-select">
+                        <option value="3">Est. with Solar (3kW)</option>
+                        <option value="5" selected>Est. with Solar (5kW)</option>
+                        <option value="10">Est. with Solar (10kW)</option>
+                    </select>
+                </div>
+                <div class="card-body">
+                    <h2 id="solar-est-bill">--</h2>
+                    <span class="unit">THB</span>
+                </div>
+                <div class="card-footer" style="margin-top: auto;">
+                    <p id="solar-savings" class="t-green">-- savings</p>
+                </div>
+            </div>
+        </section>
+
+        <section class="chart-section">
+            <div class="chart-header">
+                <h2>Power Profile</h2>
+                <div class="chart-filters">
+                    <select id="metricFilter">
+                        <option value="power">Power (W)</option>
+                        <option value="cost">Cost (THB)</option>
+                    </select>
+                    <select id="timeRangeFilter">
+                        <option value="today_yesterday">Today vs Yesterday</option>
+                        <option value="last_7_days">Last 7 Days vs Prev 7 Days</option>
+                        <option value="this_month">Current Billing Cycle vs Prev</option>
+                    </select>
+                    <select id="freqFilter">
+                        <option value="15m">15 Mins</option>
+                        <option value="1h">Hourly</option>
+                        <option value="1d">Daily</option>
+                    </select>
+                </div>
+            </div>
+            <div class="chart-container">
+                <canvas id="usageChart"></canvas>
+            </div>
+        </section>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>
