@@ -4,6 +4,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const timeRangeFilter = document.getElementById('timeRangeFilter');
     const freqFilter = document.getElementById('freqFilter');
     const metricFilter = document.getElementById('metricFilter');
+    const customDateInput = document.getElementById('customDateInput');
 
     if (metricFilter) {
         metricFilter.addEventListener('change', () => {
@@ -13,9 +14,33 @@ document.addEventListener('DOMContentLoaded', () => {
     
     if (timeRangeFilter) {
         timeRangeFilter.addEventListener('change', () => {
+            if (timeRangeFilter.value === 'custom_date') {
+                customDateInput.style.display = 'inline-block';
+                if (!customDateInput.value) {
+                    let d = new Date();
+                    d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+                    customDateInput.value = d.toISOString().slice(0, 10);
+                }
+            } else {
+                customDateInput.style.display = 'none';
+            }
             if (window.globalRawRows) renderChart(window.globalRawRows);
         });
     }
+    
+    if (customDateInput) {
+        customDateInput.addEventListener('click', () => {
+            try {
+                if (typeof customDateInput.showPicker === 'function') {
+                    customDateInput.showPicker();
+                }
+            } catch (e) {}
+        });
+        customDateInput.addEventListener('change', () => {
+            if (window.globalRawRows) renderChart(window.globalRawRows);
+        });
+    }
+
     if (freqFilter) {
         freqFilter.addEventListener('change', () => {
             if (window.globalRawRows) renderChart(window.globalRawRows);
@@ -31,6 +56,22 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
     }
+
+    const batteryFilter = document.getElementById('batterySizeFilter');
+    const dodFilter = document.getElementById('dodFilter');
+    
+    const updateBattery = () => {
+        if (window.globalRawRows) {
+            calculateBillingCosts(window.globalRawRows);
+            renderChart(window.globalRawRows);
+        }
+    };
+    
+    if (batteryFilter) {
+        batteryFilter.addEventListener('change', updateBattery);
+        batteryFilter.addEventListener('input', updateBattery);
+    }
+    if (dodFilter) dodFilter.addEventListener('change', updateBattery);
     
     const themeToggle = document.getElementById('theme-toggle');
     const themeIcon = document.getElementById('theme-icon');
@@ -56,6 +97,12 @@ const EXTRA_USAGE_EST = 0.3; // 30% increase with solar
 function getSolarKW() {
     const el = document.getElementById('solarSizeFilter');
     return el ? parseFloat(el.value) : 5.0;
+}
+
+function getBatteryKWh() {
+    const el = document.getElementById('batterySizeFilter');
+    const val = el ? parseFloat(el.value) : 0;
+    return isNaN(val) ? 0 : val;
 }
 
 async function initDashboard() {
@@ -119,27 +166,37 @@ function processData(rows) {
 function calculateRealtime(lastRow) {
     const watt = parseNumber(lastRow[4]);
     
-    const uiWatt = document.getElementById('live-watt');
-    const uiStatus = document.getElementById('power-status');
+    const uiWattVal = document.getElementById('live-watt-val');
+    const uiStatusBadge = document.getElementById('power-status-badge');
+    const uiStatusText = document.getElementById('power-status-text');
+    const gaugeNeedle = document.getElementById('gauge-needle');
 
-    uiWatt.innerText = watt.toLocaleString('en-US', {maximumFractionDigits: 1});
+    let kw = watt / 1000;
+    if (uiWattVal) uiWattVal.innerText = kw.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
 
-    // Determine thresholds based on app context (2000W = High, 920W = Med)
-    if (watt > 2000) {
-        uiWatt.style.color = 'var(--glow-red)';
-        uiWatt.style.textShadow = '0 0 20px rgba(248, 113, 113, 0.4)';
-        uiStatus.innerText = "Peak Usage (High)";
-        uiStatus.style.color = 'var(--glow-red)';
-    } else if (watt > 920) {
-        uiWatt.style.color = 'var(--glow-yellow)';
-        uiWatt.style.textShadow = '0 0 20px rgba(251, 191, 36, 0.4)';
-        uiStatus.innerText = "Moderate Usage";
-        uiStatus.style.color = 'var(--glow-yellow)';
-    } else {
-        uiWatt.style.color = 'var(--glow-green)';
-        uiWatt.style.textShadow = '0 0 20px rgba(52, 211, 153, 0.4)';
-        uiStatus.innerText = "Eco Mode (Low)";
-        uiStatus.style.color = 'var(--glow-green)';
+    if (gaugeNeedle) {
+        let maxKw = 10;
+        let p = kw / maxKw;
+        if (p > 1) p = 1;
+        if (p < 0) p = 0;
+        let deg = (p * 180) - 90; 
+        gaugeNeedle.style.transform = `rotate(${deg}deg)`;
+    }
+
+    if (uiStatusBadge && uiStatusText) {
+        if (watt > 4000) {
+            uiStatusBadge.style.background = 'rgba(248, 113, 113, 0.15)';
+            uiStatusBadge.style.color = '#f87171';
+            uiStatusText.innerText = "Heavy Peak";
+        } else if (watt > 2000) {
+            uiStatusBadge.style.background = 'rgba(251, 191, 36, 0.15)';
+            uiStatusBadge.style.color = '#fbbf24';
+            uiStatusText.innerText = "Consuming";
+        } else {
+            uiStatusBadge.style.background = 'rgba(52, 211, 153, 0.15)';
+            uiStatusBadge.style.color = '#34d399';
+            uiStatusText.innerText = "Eco Mode";
+        }
     }
 }
 
@@ -156,6 +213,15 @@ function calculateBillingCosts(rows) {
     let cycleCount = 0;
     let solarCost = 0;
     let solarPanelKw = getSolarKW();
+    let batteryFullCapacity = getBatteryKWh();
+    let dodEl = document.getElementById('dodFilter');
+    let batteryDoD = dodEl ? parseFloat(dodEl.value) : 0.9;
+    let usableBatteryCapacity = batteryFullCapacity * batteryDoD;
+    let currentBattery = 0;
+
+    let todayCost = 0;
+    let todayCount = 0;
+    const todayStr = new Date().toLocaleDateString('en-GB');
 
     for (let r of rows) {
         let rDate = parseRowDate(r[0]);
@@ -173,8 +239,28 @@ function calculateBillingCosts(rows) {
             let solarProduced = solarPanelKw * 0.8 * solarEff * 0.25; // 80% System Efficiency
             let usageWithExtra = (hour >= 7 && hour <= 17) ? addedKwh * (1 + EXTRA_USAGE_EST) : addedKwh;
             
-            let remainingDemand = Math.max(0, usageWithExtra - solarProduced);
-            solarCost += (remainingDemand * PRICE_PER_UNIT);
+            // Battery Logic
+            let excessSolar = solarProduced - usageWithExtra;
+            let gridImport = 0;
+
+            if (rDate.toLocaleDateString('en-GB') === todayStr) {
+                todayCost += cost;
+                todayCount++;
+            }
+
+            if (excessSolar > 0) {
+                // Charge Battery
+                let chargeAmt = Math.min(excessSolar, usableBatteryCapacity - currentBattery);
+                currentBattery += chargeAmt;
+            } else {
+                // Discharge Battery
+                let deficit = -excessSolar;
+                let dischargeAmt = Math.min(deficit, currentBattery);
+                currentBattery -= dischargeAmt;
+                gridImport = deficit - dischargeAmt;
+            }
+            
+            solarCost += (gridImport * PRICE_PER_UNIT);
         }
     }
 
@@ -204,6 +290,26 @@ function calculateBillingCosts(rows) {
         let savings = estFullMonth - estSolarFullMonth;
         document.getElementById('solar-savings').innerText = `Est. ~ ${savings.toLocaleString('en-US', {maximumFractionDigits: 0})} THB/mo savings`;
     }
+
+    if (todayCount > 0) {
+        let estTodayFull = (todayCost / todayCount) * 96;
+        let uiTodayInfo = document.getElementById('today-cost');
+        if (uiTodayInfo) {
+            let dailyBenchmark = 100; // Based on 3000 THB / 30 days
+            let isOver = estTodayFull > dailyBenchmark;
+            let estColor = isOver ? '#f87171' : '#34d399';
+            let iconStr = isOver ? 'trending_up' : 'trending_down';
+            
+            uiTodayInfo.innerHTML = `Today so far: <strong style="color:var(--text-main)">${todayCost.toLocaleString('en-US', {maximumFractionDigits:1})}</strong> THB<br>
+                <div style="display:flex; align-items:center; justify-content:space-between; margin-top:4px;">
+                    <span style="font-size: 0.85rem; font-weight: 500; color: ${estColor};">
+                        <span class="material-symbols-rounded" style="font-size: 1rem; vertical-align: middle; margin-right:2px;">${iconStr}</span>
+                        Est. ~${estTodayFull.toLocaleString('en-US', {maximumFractionDigits:0})} THB
+                    </span>
+                    <span style="font-size: 0.75rem; opacity: 0.6;">Limit: ${dailyBenchmark}฿</span>
+                </div>`;
+        }
+    }
 }
 
 let currentChart = null;
@@ -222,7 +328,21 @@ function renderChart(rows) {
     let labelCompare = 'Yesterday';
     let offsetCompareMs = 24 * 3600 * 1000;
 
-    if (timeRange === 'last_7_days') {
+    if (timeRange === 'custom_date') {
+        const dateInput = document.getElementById('customDateInput');
+        if (dateInput && dateInput.value) {
+            rangeStart = new Date(dateInput.value);
+            rangeStart.setHours(0,0,0,0);
+        }
+        durationDays = 1;
+        let formatOpts = { day: 'numeric', month: 'short' };
+        labelBase = rangeStart.toLocaleDateString('en-GB', formatOpts);
+        
+        let pDate = new Date(rangeStart);
+        pDate.setDate(pDate.getDate() - 1);
+        labelCompare = pDate.toLocaleDateString('en-GB', formatOpts);
+        offsetCompareMs = 24 * 3600 * 1000;
+    } else if (timeRange === 'last_7_days') {
         rangeStart.setDate(today.getDate() - 6);
         durationDays = 7;
         labelBase = 'Last 7 Days';
@@ -260,6 +380,7 @@ function renderChart(rows) {
     let labels = [];
     let baseData = [];
     let compareData = [];
+    let batteryDataBucket = [];
 
     for (let i = 0; i < bucketCount; i++) {
         let bTime = new Date(rangeStart.getTime() + i * bucketMs);
@@ -280,25 +401,63 @@ function renderChart(rows) {
         }
         baseData.push([]);
         compareData.push([]);
+        batteryDataBucket.push([]);
     }
 
-    rows.forEach(r => {
+    let solarPanelKw = getSolarKW();
+    let batteryFullCapacity = getBatteryKWh();
+    let dodEl = document.getElementById('dodFilter');
+    let batteryDoD = dodEl ? parseFloat(dodEl.value) : 0.9;
+    let usableBatteryCapacity = batteryFullCapacity * batteryDoD;
+    
+    let globalBatteryState = 0;
+    let rowBatteryState = new Array(rows.length).fill(0);
+    
+    rows.forEach((r, idx) => {
+        let rDate = parseRowDate(r[0]);
+        let hour = rDate.getHours();
+        let addedKwh = parseNumber(r[2]);
+        let solarEff = (hour >= 7 && hour <= 17) ? Math.sin((hour - 7) * Math.PI / 10) : 0;
+        let solarProduced = solarPanelKw * 0.8 * solarEff * 0.25; 
+        let usageWithExtra = (hour >= 7 && hour <= 17) ? addedKwh * (1 + EXTRA_USAGE_EST) : addedKwh;
+        
+        let excessSolar = solarProduced - usageWithExtra;
+        if (excessSolar > 0) {
+            let chargeAmt = Math.min(excessSolar, usableBatteryCapacity - globalBatteryState);
+            globalBatteryState += chargeAmt;
+        } else {
+            let deficit = -excessSolar;
+            let dischargeAmt = Math.min(deficit, globalBatteryState);
+            globalBatteryState -= dischargeAmt;
+        }
+        rowBatteryState[idx] = globalBatteryState;
+    });
+
+    rows.forEach((r, idx) => {
         let rDate = parseRowDate(r[0]);
         let rTime = rDate.getTime();
         
         let metricVal = 0;
+        let battVal = 0;
+        let stateKwh = rowBatteryState[idx];
+
         if (metricType === 'power') {
             metricVal = parseNumber(r[4]);
+            battVal = stateKwh * 1000;
         } else {
             let addedKwh = parseNumber(r[2]);
             let rowCost = parseNumber(r[3]);
             if (rowCost === 0 && addedKwh > 0) rowCost = addedKwh * PRICE_PER_UNIT;
             metricVal = rowCost;
+            battVal = stateKwh * PRICE_PER_UNIT;
         }
         
         if (rTime >= rangeStart.getTime() && rTime < rangeStart.getTime() + durationMs) {
             let bucketIdx = Math.floor((rTime - rangeStart.getTime()) / bucketMs);
-            if (bucketIdx >= 0 && bucketIdx < bucketCount) baseData[bucketIdx].push(metricVal);
+            if (bucketIdx >= 0 && bucketIdx < bucketCount) {
+                baseData[bucketIdx].push(metricVal);
+                batteryDataBucket[bucketIdx].push(battVal);
+            }
         }
 
         let mappedTime = rTime + offsetCompareMs;
@@ -310,14 +469,16 @@ function renderChart(rows) {
 
     let finalBase;
     let finalCompare;
-    let solarPanelKw = getSolarKW();
+    let finalBattery;
     
     if (metricType === 'power') {
         finalBase = baseData.map(arr => arr.length > 0 ? arr.reduce((a,b)=>a+b,0)/arr.length : null);
         finalCompare = compareData.map(arr => arr.length > 0 ? arr.reduce((a,b)=>a+b,0)/arr.length : null);
+        finalBattery = batteryDataBucket.map(arr => arr.length > 0 ? arr.reduce((a,b)=>a+b,0)/arr.length : null);
     } else {
         finalBase = baseData.map(arr => arr.length > 0 ? arr.reduce((a,b)=>a+b,0) : null);
         finalCompare = compareData.map(arr => arr.length > 0 ? arr.reduce((a,b)=>a+b,0) : null);
+        finalBattery = batteryDataBucket.map(arr => arr.length > 0 ? arr.reduce((a,b)=>a+b,0) : null);
     }
 
     let solarData = [];
@@ -363,56 +524,78 @@ function renderChart(rows) {
     gradientSolar.addColorStop(0, 'rgba(251, 191, 36, 0.4)');
     gradientSolar.addColorStop(1, 'rgba(251, 191, 36, 0.01)');
 
+    let gradientBattery = ctx.createLinearGradient(0, 0, 0, 400);
+    gradientBattery.addColorStop(0, 'rgba(52, 211, 153, 0.4)');
+    gradientBattery.addColorStop(1, 'rgba(52, 211, 153, 0.01)');
+
+    let chartDatasets = [
+        {
+            label: `Solar Gen Est. (${metricType === 'cost' ? 'THB' : 'W'})`,
+            data: solarData,
+            borderColor: '#fbbf24',
+            backgroundColor: gradientSolar,
+            borderWidth: 2,
+            fill: true,
+            tension: 0.4,
+            pointRadius: 0,
+            pointHitRadius: 10
+        }
+    ];
+
+    if (getBatteryKWh() > 0) {
+        chartDatasets.push({
+            label: `Battery Level (${metricType === 'cost' ? 'THB' : 'Wh'})`,
+            data: finalBattery,
+            borderColor: '#34d399',
+            backgroundColor: gradientBattery,
+            borderWidth: 2,
+            fill: true,
+            tension: 0.4,
+            pointRadius: 0,
+            pointHitRadius: 10
+        });
+    }
+
+    chartDatasets.push({
+        label: `${labelBase} ${metricType === 'cost' ? 'Cost (THB)' : 'Power (W)'}`,
+        data: finalBase,
+        borderColor: '#38bdf8',
+        segment: {
+            borderColor: context => {
+                let time = rangeStart.getTime() + context.p0DataIndex * bucketMs;
+                let d = new Date(time);
+                let day = d.getDay();
+                let h = d.getHours();
+                let isPeak = (day >= 1 && day <= 5 && h >= 9 && h < 22);
+                return isPeak ? '#f87171' : '#38bdf8';
+            }
+        },
+        backgroundColor: gradientToday,
+        borderWidth: 3,
+        fill: true,
+        tension: 0.4,
+        pointRadius: 0,
+        pointHitRadius: 15,
+        pointHoverRadius: 6
+    });
+
+    chartDatasets.push({
+        label: `${labelCompare} ${metricType === 'cost' ? 'Cost (THB)' : 'Power (W)'}`,
+        data: finalCompare,
+        borderColor: '#475569',
+        borderWidth: 2,
+        borderDash: [5, 5],
+        fill: false,
+        tension: 0.4,
+        pointRadius: 0,
+        pointHitRadius: 10
+    });
+
     currentChart = new Chart(ctx, {
         type: 'line',
         data: {
             labels: labels,
-            datasets: [
-                {
-                    label: `Solar Gen Est. (${metricType === 'cost' ? 'THB' : 'W'})`,
-                    data: solarData,
-                    borderColor: '#fbbf24',
-                    backgroundColor: gradientSolar,
-                    borderWidth: 2,
-                    fill: true,
-                    tension: 0.4,
-                    pointRadius: 0,
-                    pointHitRadius: 10
-                },
-                {
-                    label: `${labelBase} ${metricType === 'cost' ? 'Cost (THB)' : 'Power (W)'}`,
-                    data: finalBase,
-                    borderColor: '#38bdf8',
-                    segment: {
-                        borderColor: context => {
-                            let time = rangeStart.getTime() + context.p0DataIndex * bucketMs;
-                            let d = new Date(time);
-                            let day = d.getDay();
-                            let h = d.getHours();
-                            let isPeak = (day >= 1 && day <= 5 && h >= 9 && h < 22);
-                            return isPeak ? '#f87171' : '#38bdf8';
-                        }
-                    },
-                    backgroundColor: gradientToday,
-                    borderWidth: 3,
-                    fill: true,
-                    tension: 0.4,
-                    pointRadius: 0,
-                    pointHitRadius: 15,
-                    pointHoverRadius: 6
-                },
-                {
-                    label: `${labelCompare} ${metricType === 'cost' ? 'Cost (THB)' : 'Power (W)'}`,
-                    data: finalCompare,
-                    borderColor: '#475569',
-                    borderWidth: 2,
-                    borderDash: [5, 5],
-                    fill: false,
-                    tension: 0.4,
-                    pointRadius: 0,
-                    pointHitRadius: 10
-                }
-            ]
+            datasets: chartDatasets
         },
         options: {
             responsive: true,

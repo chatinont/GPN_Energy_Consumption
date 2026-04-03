@@ -251,7 +251,7 @@ body {
     gap: 10px;
 }
 
-.chart-filters select {
+.chart-filters select, .chart-filters input[type="date"] {
     background: rgba(15, 23, 42, 0.6);
     color: var(--text-main);
     border: 1px solid var(--card-border);
@@ -264,13 +264,22 @@ body {
     transition: border-color 0.3s;
 }
 
-.chart-filters select:hover {
+.chart-filters select:hover, .chart-filters input[type="date"]:hover {
     border-color: var(--accent);
 }
 
-body.light-theme .chart-filters select {
+body.light-theme .chart-filters select, body.light-theme .chart-filters input[type="date"] {
     background: rgba(255,255,255,0.8);
     color: var(--text-main);
+}
+
+.chart-filters input[type="date"]::-webkit-calendar-picker-indicator {
+    filter: invert(1);
+    cursor: pointer;
+}
+
+body.light-theme .chart-filters input[type="date"]::-webkit-calendar-picker-indicator {
+    filter: none;
 }
 
 .chart-container {
