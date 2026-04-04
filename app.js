@@ -1,6 +1,17 @@
 document.addEventListener('DOMContentLoaded', () => {
     initDashboard();
 
+    const THAI_DAYS = ['อาทิตย์','จันทร์','อังคาร','พุธ','พฤหัสบดี','ศุกร์','เสาร์'];
+    const DAY_COLORS = ['#ef4444','#fbbf24','#f472b6','#34d399','#f97316','#38bdf8','#a78bfa'];
+    function updateDayLabel(dateStr) {
+        let el = document.getElementById('dayOfWeekLabel');
+        if (!el || !dateStr) return;
+        let d = new Date(dateStr);
+        let dayIdx = d.getDay();
+        el.textContent = 'วัน' + THAI_DAYS[dayIdx];
+        el.style.color = DAY_COLORS[dayIdx];
+    }
+
     const timeRangeFilter = document.getElementById('timeRangeFilter');
     const freqFilter = document.getElementById('freqFilter');
     const metricFilter = document.getElementById('metricFilter');
@@ -12,19 +23,56 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
     
+    const customDateContainer = document.getElementById('customDateContainer');
     if (timeRangeFilter) {
         timeRangeFilter.addEventListener('change', () => {
             if (timeRangeFilter.value === 'custom_date') {
-                customDateInput.style.display = 'inline-block';
+                if (customDateContainer) {
+                    customDateContainer.style.display = 'flex';
+                } else {
+                    customDateInput.style.display = 'inline-block';
+                }
                 if (!customDateInput.value) {
                     let d = new Date();
                     d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
                     customDateInput.value = d.toISOString().slice(0, 10);
                 }
+                updateDayLabel(customDateInput.value);
             } else {
-                customDateInput.style.display = 'none';
+                if (customDateContainer) {
+                    customDateContainer.style.display = 'none';
+                } else {
+                    customDateInput.style.display = 'none';
+                }
             }
             if (window.globalRawRows) renderChart(window.globalRawRows);
+        });
+    }
+
+    const prevDateBtn = document.getElementById('prevDateBtn');
+    const nextDateBtn = document.getElementById('nextDateBtn');
+    
+    if (prevDateBtn && customDateInput) {
+        prevDateBtn.addEventListener('click', () => {
+            if (customDateInput.value) {
+                let d = new Date(customDateInput.value);
+                d.setDate(d.getDate() - 1);
+                customDateInput.value = d.toISOString().slice(0, 10);
+                updateDayLabel(customDateInput.value);
+                if (window.globalRawRows) renderChart(window.globalRawRows);
+            }
+        });
+    }
+    
+    if (nextDateBtn && customDateInput) {
+        nextDateBtn.addEventListener('click', () => {
+            if (customDateInput.value) {
+                let d = new Date(customDateInput.value);
+                d.setDate(d.getDate() + 1);
+                customDateInput.value = d.toISOString().slice(0, 10);
+                updateDayLabel(customDateInput.value);
+                if (window.globalRawRows) renderChart(window.globalRawRows);
+            }
         });
     }
     
@@ -37,6 +85,7 @@ document.addEventListener('DOMContentLoaded', () => {
             } catch (e) {}
         });
         customDateInput.addEventListener('change', () => {
+            updateDayLabel(customDateInput.value);
             if (window.globalRawRows) renderChart(window.globalRawRows);
         });
     }
@@ -90,9 +139,91 @@ document.addEventListener('DOMContentLoaded', () => {
 const GS_CSV_URL = "https://docs.google.com/spreadsheets/d/1JE-c7uCBsnEJFgG-pXQzjq7kVHDp9X1igY_7mhJro-Y/gviz/tq?tqx=out:csv&sheet=Log_15Min";
 
 // Config from backend logic
-const PRICE_PER_UNIT = 4.6;
 const BILLING_DAY = 24;
 const EXTRA_USAGE_EST = 0.3; // 30% increase with solar
+
+// Location Config (For Solar Irradiance Weather API)
+// ระบุพิกัด GPS บ้านตัวเองได้เลย (ทศนิยม 4-5 ตำแหน่ง)
+const HOME_LAT = 13.937456; 
+const HOME_LON = 100.486207;
+
+// Solar Derating Factors (ตัวหักลดประสิทธิภาพโซล่าเซลล์)
+const INVERTER_EFF = 0.96;    // ประสิทธิภาพ Inverter ~96%
+const SOILING_LOSS = 0.96;    // ฝุ่น/คราบสกปรกบนแผง ~4% loss
+const WIRING_LOSS = 0.98;     // สูญเสียในสายไฟ/ข้อต่อ ~2% loss
+const MISMATCH_LOSS = 0.98;   // Module mismatch ~2% loss
+const TEMP_COEFF = -0.004;    // ค่าสัมประสิทธิ์อุณหภูมิ -0.4%/°C (สำหรับ Si panels)
+const NOCT_OFFSET = 25;       // อุณหภูมิแผงโซล่า = อากาศ + 25°C (บนหลังคา)
+const STC_TEMP = 25;          // Standard Test Condition = 25°C
+
+function getSolarSystemEff(ambientTemp) {
+    let panelTemp = ambientTemp + NOCT_OFFSET;
+    let tempFactor = 1 + TEMP_COEFF * (panelTemp - STC_TEMP);
+    if (tempFactor > 1) tempFactor = 1; // ไม่ให้เกิน 100%
+    if (tempFactor < 0.5) tempFactor = 0.5; // ป้องกันค่าผิดปกติ
+    return INVERTER_EFF * SOILING_LOSS * WIRING_LOSS * MISMATCH_LOSS * tempFactor;
+}
+
+// MEA Rate Constants
+const MEA_FT = 0.3972;
+const MEA_SERVICE_NORMAL = 38.22;
+const MEA_VAT = 1.07;
+
+function calcMeaProgressive(kwh) {
+    if(kwh <= 0) return 0;
+    let base = 0;
+    if (kwh > 400) {
+        base = (150 * 3.2484) + (250 * 4.2218) + ((kwh - 400) * 4.4217);
+    } else if (kwh > 150) {
+        base = (150 * 3.2484) + ((kwh - 150) * 4.2218);
+    } else {
+        base = kwh * 3.2484;
+    }
+    return (base + (kwh * MEA_FT) + MEA_SERVICE_NORMAL) * MEA_VAT;
+}
+
+function calcMeaBreakdown(kwh) {
+    if(kwh <= 0) return { base: 0, ft: 0, service: MEA_SERVICE_NORMAL, vat: 0, total: 0 };
+    let base = 0;
+    if (kwh > 400) {
+        base = (150 * 3.2484) + (250 * 4.2218) + ((kwh - 400) * 4.4217);
+    } else if (kwh > 150) {
+        base = (150 * 3.2484) + ((kwh - 150) * 4.2218);
+    } else {
+        base = kwh * 3.2484;
+    }
+    let ft = kwh * MEA_FT;
+    let service = MEA_SERVICE_NORMAL;
+    let beforeVat = base + ft + service;
+    let vat = beforeVat * 0.07;
+    return {
+        base: base,
+        ft: ft,
+        service: service,
+        vat: vat,
+        total: beforeVat + vat
+    };
+}
+
+function calcMeaEnergy(kwh) {
+    if(kwh <= 0) return 0;
+    let base = 0;
+    if (kwh > 400) {
+        base = (150 * 3.2484) + (250 * 4.2218) + ((kwh - 400) * 4.4217);
+    } else if (kwh > 150) {
+        base = (150 * 3.2484) + ((kwh - 150) * 4.2218);
+    } else {
+        base = kwh * 3.2484;
+    }
+    return (base + (kwh * MEA_FT)) * MEA_VAT; 
+}
+
+function getBillingCycleStartMs(dObj) {
+    let d = new Date(dObj.getFullYear(), dObj.getMonth(), BILLING_DAY);
+    if (dObj.getDate() < BILLING_DAY) d.setMonth(d.getMonth() - 1);
+    d.setHours(0,0,0,0);
+    return d.getTime();
+}
 
 function getSolarKW() {
     const el = document.getElementById('solarSizeFilter');
@@ -107,19 +238,40 @@ function getBatteryKWh() {
 
 async function initDashboard() {
     try {
+        let weatherUrl = `https://api.open-meteo.com/v1/forecast?latitude=${HOME_LAT}&longitude=${HOME_LON}&hourly=shortwave_radiation,cloud_cover,temperature_2m&past_days=92&timezone=Asia%2FBangkok`;
+        let weatherRes = await fetch(weatherUrl);
+        let weatherJson = await weatherRes.json();
+        window.meteoMap = {};
+        window.meteoCloud = {};
+        window.meteoTemp = {};
+        window.meteoFetchTime = new Date();
+        if (weatherJson && weatherJson.hourly) {
+            let times = weatherJson.hourly.time;
+            let rads = weatherJson.hourly.shortwave_radiation;
+            let clouds = weatherJson.hourly.cloud_cover;
+            let temps = weatherJson.hourly.temperature_2m;
+            for(let i=0; i<times.length; i++) {
+                window.meteoMap[times[i]] = rads[i];
+                window.meteoCloud[times[i]] = clouds[i];
+                window.meteoTemp[times[i]] = temps[i];
+            }
+        }
+    } catch(e) {
+        console.warn("Weather fetch failed, falling back to sine wave", e);
+    }
+
+    try {
         Papa.parse(GS_CSV_URL, {
             download: true,
             header: false,
             complete: function(results) {
                 const data = results.data;
-                // Exclude headers, assume headers in row 0
-                // Valid rows should at least have time in col 0
                 const rows = data.slice(1).filter(r => r && r[0]);
                 processData(rows);
             },
             error: function(err) {
                 console.error('Error fetching data', err);
-                document.getElementById('loader').innerHTML = "<p>Error loading data. Make sure Google Sheet sharing is set to 'Anyone with link'.</p>";
+                document.getElementById('loader').innerHTML = "<p>Error loading data.</p>";
             }
         });
     } catch (e) {
@@ -209,9 +361,10 @@ function calculateBillingCosts(rows) {
     }
     startCycle.setHours(0,0,0,0);
 
-    let cycleCost = 0;
+    let cycleKwh = 0;
     let cycleCount = 0;
-    let solarCost = 0;
+    let cycleSolarGridKwh = 0;
+    
     let solarPanelKw = getSolarKW();
     let batteryFullCapacity = getBatteryKWh();
     let dodEl = document.getElementById('dodFilter');
@@ -219,7 +372,7 @@ function calculateBillingCosts(rows) {
     let usableBatteryCapacity = batteryFullCapacity * batteryDoD;
     let currentBattery = 0;
 
-    let todayCost = 0;
+    let todayKwh = 0;
     let todayCount = 0;
     const todayStr = new Date().toLocaleDateString('en-GB');
 
@@ -227,84 +380,139 @@ function calculateBillingCosts(rows) {
         let rDate = parseRowDate(r[0]);
         if (rDate >= startCycle) {
             let addedKwh = parseNumber(r[2]);
-            let cost = parseNumber(r[3]); 
-            if (cost === 0 && addedKwh > 0) cost = addedKwh * PRICE_PER_UNIT;
-            
-            cycleCost += cost;
+            cycleKwh += addedKwh;
             cycleCount++;
             
-            // Solar simulation replay logic
             let hour = rDate.getHours();
-            let solarEff = (hour >= 7 && hour <= 17) ? Math.sin((hour - 7) * Math.PI / 10) : 0;
-            let solarProduced = solarPanelKw * 0.8 * solarEff * 0.25; // 80% System Efficiency
+            let dateKey = rDate.getFullYear() + "-" + String(rDate.getMonth()+1).padStart(2,'0') + "-" + String(rDate.getDate()).padStart(2,'0') + "T" + String(hour).padStart(2,'0') + ":00";
+            let rad = window.meteoMap && window.meteoMap[dateKey] !== undefined ? window.meteoMap[dateKey] : -1;
+            let cloud = window.meteoCloud && window.meteoCloud[dateKey] !== undefined ? window.meteoCloud[dateKey] : 0;
+            let ambTemp = window.meteoTemp && window.meteoTemp[dateKey] !== undefined ? window.meteoTemp[dateKey] : 30;
+            
+            let cloudFactor = 1 - (cloud * 0.007);
+            let sysEff = getSolarSystemEff(ambTemp);
+            let solarEff = rad >= 0 ? (rad / 1000) * cloudFactor : ((hour >= 7 && hour <= 17) ? Math.sin((hour - 7) * Math.PI / 10) : 0);
+            
+            let solarProduced = solarPanelKw * sysEff * solarEff * 0.25; 
             let usageWithExtra = (hour >= 7 && hour <= 17) ? addedKwh * (1 + EXTRA_USAGE_EST) : addedKwh;
             
-            // Battery Logic
             let excessSolar = solarProduced - usageWithExtra;
             let gridImport = 0;
 
             if (rDate.toLocaleDateString('en-GB') === todayStr) {
-                todayCost += cost;
+                todayKwh += addedKwh;
                 todayCount++;
             }
 
             if (excessSolar > 0) {
-                // Charge Battery
                 let chargeAmt = Math.min(excessSolar, usableBatteryCapacity - currentBattery);
                 currentBattery += chargeAmt;
             } else {
-                // Discharge Battery
                 let deficit = -excessSolar;
                 let dischargeAmt = Math.min(deficit, currentBattery);
                 currentBattery -= dischargeAmt;
                 gridImport = deficit - dischargeAmt;
             }
             
-            solarCost += (gridImport * PRICE_PER_UNIT);
+            cycleSolarGridKwh += gridImport;
         }
     }
 
+    let currentBill = calcMeaProgressive(cycleKwh);
     document.getElementById('billing-cycle-date').innerText = `Billing Cycle starting ${startCycle.toLocaleDateString('en-GB')}`;
-    document.getElementById('current-bill').innerText = cycleCost.toLocaleString('en-US', {maximumFractionDigits: 1});
+    document.getElementById('current-bill').innerText = currentBill.toLocaleString('en-US', {maximumFractionDigits: 1});
 
-    // Estimates calculation
+    // Current Bill card — progress bar & stats
+    let cycleDaysElapsed = Math.max(1, Math.floor((today.getTime() - startCycle.getTime()) / (24*3600*1000)));
+    let cycleTotalDays = 30;
+    let cyclePct = Math.min(100, Math.round((cycleDaysElapsed / cycleTotalDays) * 100));
+    let cbDays = document.getElementById('cb-cycle-days');
+    if (cbDays) cbDays.textContent = `วันที่ ${cycleDaysElapsed} / ${cycleTotalDays}`;
+    let cbPct = document.getElementById('cb-cycle-pct');
+    if (cbPct) cbPct.textContent = `${cyclePct}%`;
+    let cbBar = document.getElementById('cb-progress-bar');
+    if (cbBar) cbBar.style.width = `${cyclePct}%`;
+    let cbKwh = document.getElementById('cb-kwh');
+    if (cbKwh) cbKwh.textContent = cycleKwh.toLocaleString('en-US', {maximumFractionDigits: 1});
+    let cbAvg = document.getElementById('cb-avg-day');
+    if (cbAvg) cbAvg.textContent = (cycleKwh / cycleDaysElapsed).toLocaleString('en-US', {maximumFractionDigits: 1});
+    let cbAvgCost = document.getElementById('cb-avg-cost');
+    if (cbAvgCost) cbAvgCost.textContent = (currentBill / cycleDaysElapsed).toLocaleString('en-US', {maximumFractionDigits: 0});
+    
+    let cbBase = document.getElementById('cb-base');
+    if (cbBase) {
+        let cbd = calcMeaBreakdown(cycleKwh);
+        cbBase.textContent = cbd.base.toLocaleString('en-US', {maximumFractionDigits: 0});
+        document.getElementById('cb-svc-ft').textContent = (cbd.service + cbd.ft).toLocaleString('en-US', {maximumFractionDigits: 0});
+        document.getElementById('cb-vat').textContent = cbd.vat.toLocaleString('en-US', {maximumFractionDigits: 0});
+    }
+
+    // We store the blended cost per unit globally so the chart can use it
+    window.blendedPricePerUnit = cycleKwh > 0 ? (calcMeaProgressive(cycleKwh) / cycleKwh) : 4.4;
+
     if (cycleCount > 0) {
-        // Average per interval
-        let avgCostPer15m = cycleCost / cycleCount;
-        let estFullMonth = avgCostPer15m * 96 * 30; 
-        document.getElementById('est-bill').innerText = estFullMonth.toLocaleString('en-US', {maximumFractionDigits: 0});
+        let avgKwhPer15m = cycleKwh / cycleCount;
+        let estFullMonthKwh = avgKwhPer15m * 96 * 30; 
+        let estFullMonthBill = calcMeaProgressive(estFullMonthKwh);
+        document.getElementById('est-bill').innerText = estFullMonthBill.toLocaleString('en-US', {maximumFractionDigits: 0});
+
+        let bdKwh = document.getElementById('bd-total-kwh');
+        if (bdKwh) bdKwh.innerText = estFullMonthKwh.toLocaleString('en-US', {maximumFractionDigits: 0});
+
+        let bdBase = document.getElementById('bd-base-cost');
+        if (bdBase) {
+            let breakdown = calcMeaBreakdown(estFullMonthKwh);
+            bdBase.innerText = breakdown.base.toLocaleString('en-US', {maximumFractionDigits: 0});
+            document.getElementById('bd-ft-cost').innerText = breakdown.ft.toLocaleString('en-US', {maximumFractionDigits: 0});
+            document.getElementById('bd-svc-cost').innerText = breakdown.service.toLocaleString('en-US', {maximumFractionDigits: 1});
+            document.getElementById('bd-vat-cost').innerText = breakdown.vat.toLocaleString('en-US', {maximumFractionDigits: 0});
+        }
 
         let budgetWarning = document.getElementById('budget-warning');
         if (budgetWarning) {
-            if (estFullMonth > 3000) {
+            if (estFullMonthBill > 3000) {
                 budgetWarning.style.display = 'block';
             } else {
                 budgetWarning.style.display = 'none';
             }
         }
 
-        let avgSolarPer15m = solarCost / cycleCount;
-        let estSolarFullMonth = avgSolarPer15m * 96 * 30;
-        document.getElementById('solar-est-bill').innerText = estSolarFullMonth.toLocaleString('en-US', {maximumFractionDigits: 0});
+        let avgSolarKwhPer15m = cycleSolarGridKwh / cycleCount;
+        let estSolarFullMonthKwh = avgSolarKwhPer15m * 96 * 30;
+        let estSolarFullMonthBill = calcMeaProgressive(estSolarFullMonthKwh);
+        document.getElementById('solar-est-bill').innerText = estSolarFullMonthBill.toLocaleString('en-US', {maximumFractionDigits: 0});
         
-        let savings = estFullMonth - estSolarFullMonth;
+        let savings = estFullMonthBill - estSolarFullMonthBill;
         document.getElementById('solar-savings').innerText = `Est. ~ ${savings.toLocaleString('en-US', {maximumFractionDigits: 0})} THB/mo savings`;
+
+        // Solar card — production stats
+        let solDailyKwh = document.getElementById('sol-daily-kwh');
+        if (solDailyKwh) {
+            let dailySolarProd = (estFullMonthKwh - estSolarFullMonthKwh) / 30;
+            let gridPct = estSolarFullMonthKwh > 0 ? Math.round((estSolarFullMonthKwh / estFullMonthKwh) * 100) : 0;
+            solDailyKwh.textContent = dailySolarProd.toLocaleString('en-US', {maximumFractionDigits: 1}) + ' kWh';
+            document.getElementById('sol-daily-saving').textContent = (savings / 30).toLocaleString('en-US', {maximumFractionDigits: 0}) + ' บาท';
+            document.getElementById('sol-grid-pct').textContent = gridPct + '%';
+        }
     }
 
     if (todayCount > 0) {
-        let estTodayFull = (todayCost / todayCount) * 96;
+        let estTodayFullKwh = (todayKwh / todayCount) * 96;
+        let todayCost = todayKwh * window.blendedPricePerUnit;
+        let estTodayFullCost = estTodayFullKwh * window.blendedPricePerUnit;
+
         let uiTodayInfo = document.getElementById('today-cost');
         if (uiTodayInfo) {
-            let dailyBenchmark = 100; // Based on 3000 THB / 30 days
-            let isOver = estTodayFull > dailyBenchmark;
+            let dailyBenchmark = 100; 
+            let isOver = estTodayFullCost > dailyBenchmark;
             let estColor = isOver ? '#f87171' : '#34d399';
             let iconStr = isOver ? 'trending_up' : 'trending_down';
             
-            uiTodayInfo.innerHTML = `Today so far: <strong style="color:var(--text-main)">${todayCost.toLocaleString('en-US', {maximumFractionDigits:1})}</strong> THB<br>
+            uiTodayInfo.innerHTML = `Today so far: <strong style="color:var(--text-main)">${todayCost.toLocaleString('en-US', {maximumFractionDigits:1})}</strong> THB <span style="opacity:0.5">|</span> <strong style="color: #38bdf8;">${todayKwh.toLocaleString('en-US', {maximumFractionDigits:1})}</strong> kWh<br>
                 <div style="display:flex; align-items:center; justify-content:space-between; margin-top:4px;">
                     <span style="font-size: 0.85rem; font-weight: 500; color: ${estColor};">
                         <span class="material-symbols-rounded" style="font-size: 1rem; vertical-align: middle; margin-right:2px;">${iconStr}</span>
-                        Est. ~${estTodayFull.toLocaleString('en-US', {maximumFractionDigits:0})} THB
+                        Est. ~${estTodayFullCost.toLocaleString('en-US', {maximumFractionDigits:0})} THB
                     </span>
                     <span style="font-size: 0.75rem; opacity: 0.6;">Limit: ${dailyBenchmark}฿</span>
                 </div>`;
@@ -327,12 +535,14 @@ function renderChart(rows) {
     let labelBase = 'Today';
     let labelCompare = 'Yesterday';
     let offsetCompareMs = 24 * 3600 * 1000;
+    let viewingDate = new Date(); // track what date the user is viewing
 
     if (timeRange === 'custom_date') {
         const dateInput = document.getElementById('customDateInput');
         if (dateInput && dateInput.value) {
             rangeStart = new Date(dateInput.value);
             rangeStart.setHours(0,0,0,0);
+            viewingDate = new Date(rangeStart);
         }
         durationDays = 1;
         let formatOpts = { day: 'numeric', month: 'short' };
@@ -412,14 +622,44 @@ function renderChart(rows) {
     
     let globalBatteryState = 0;
     let rowBatteryState = new Array(rows.length).fill(0);
+    let rowMarginalCost = new Array(rows.length).fill(0);
+    let rowMarginalRate = new Array(rows.length).fill(0);
+    
+    let accKwhCycle = 0;
+    let currCycleMs = -1;
     
     rows.forEach((r, idx) => {
         let rDate = parseRowDate(r[0]);
         let hour = rDate.getHours();
         let addedKwh = parseNumber(r[2]);
-        let solarEff = (hour >= 7 && hour <= 17) ? Math.sin((hour - 7) * Math.PI / 10) : 0;
-        let solarProduced = solarPanelKw * 0.8 * solarEff * 0.25; 
-        let usageWithExtra = (hour >= 7 && hour <= 17) ? addedKwh * (1 + EXTRA_USAGE_EST) : addedKwh;
+        
+        let cMs = getBillingCycleStartMs(rDate);
+        if (cMs !== currCycleMs) {
+            currCycleMs = cMs;
+            accKwhCycle = 0;
+        }
+        
+        let costBefore = calcMeaEnergy(accKwhCycle);
+        accKwhCycle += addedKwh;
+        let costAfter = calcMeaEnergy(accKwhCycle);
+        
+        let mCost = costAfter - costBefore;
+        let mRate = addedKwh > 0 ? (mCost / addedKwh) : (calcMeaEnergy(accKwhCycle + 1) - calcMeaEnergy(accKwhCycle));
+        rowMarginalCost[idx] = mCost;
+        rowMarginalRate[idx] = mRate;
+
+        let h = rDate.getHours();
+        let dKey = rDate.getFullYear() + "-" + String(rDate.getMonth()+1).padStart(2,'0') + "-" + String(rDate.getDate()).padStart(2,'0') + "T" + String(h).padStart(2,'0') + ":00";
+        let rad = window.meteoMap && window.meteoMap[dKey] !== undefined ? window.meteoMap[dKey] : -1;
+        let cloud = window.meteoCloud && window.meteoCloud[dKey] !== undefined ? window.meteoCloud[dKey] : 0;
+        let ambTemp = window.meteoTemp && window.meteoTemp[dKey] !== undefined ? window.meteoTemp[dKey] : 30;
+        
+        let cloudFactor = 1 - (cloud * 0.007);
+        let sysEff = getSolarSystemEff(ambTemp);
+        let solarEff = rad >= 0 ? (rad / 1000) * cloudFactor : ((h >= 7 && h <= 17) ? Math.sin((h - 7) * Math.PI / 10) : 0);
+        
+        let solarProduced = solarPanelKw * sysEff * solarEff * 0.25; 
+        let usageWithExtra = (h >= 7 && h <= 17) ? addedKwh * (1 + EXTRA_USAGE_EST) : addedKwh;
         
         let excessSolar = solarProduced - usageWithExtra;
         if (excessSolar > 0) {
@@ -440,16 +680,15 @@ function renderChart(rows) {
         let metricVal = 0;
         let battVal = 0;
         let stateKwh = rowBatteryState[idx];
+        let mCost = rowMarginalCost[idx];
+        let mRate = rowMarginalRate[idx];
 
         if (metricType === 'power') {
             metricVal = parseNumber(r[4]);
             battVal = stateKwh * 1000;
         } else {
-            let addedKwh = parseNumber(r[2]);
-            let rowCost = parseNumber(r[3]);
-            if (rowCost === 0 && addedKwh > 0) rowCost = addedKwh * PRICE_PER_UNIT;
-            metricVal = rowCost;
-            battVal = stateKwh * PRICE_PER_UNIT;
+            metricVal = mCost;
+            battVal = stateKwh * mRate;
         }
         
         if (rTime >= rangeStart.getTime() && rTime < rangeStart.getTime() + durationMs) {
@@ -488,24 +727,39 @@ function renderChart(rows) {
         
         if (metricType === 'power') {
             if (freq === '1d') {
-                val = solarPanelKw * 1000 * 0.8 * (10 / 24) * 0.636;
+                let avgSysEff = getSolarSystemEff(32); // ค่าเฉลี่ยอุณหภูมิกลางวันไทย
+                val = solarPanelKw * 1000 * avgSysEff * (10 / 24) * 0.636;
             } else {
-                let hourFloat = bTime.getHours() + (bTime.getMinutes() / 60);
-                if (hourFloat >= 7 && hourFloat <= 17) {
-                    let eff = Math.sin((hourFloat - 7) * Math.PI / 10);
-                    val = solarPanelKw * 1000 * 0.8 * eff;
-                }
+                let hourStr = String(bTime.getHours()).padStart(2,'0');
+                let dateKey = bTime.getFullYear() + "-" + String(bTime.getMonth()+1).padStart(2,'0') + "-" + String(bTime.getDate()).padStart(2,'0') + "T" + hourStr + ":00";
+                let rad = window.meteoMap && window.meteoMap[dateKey] !== undefined ? window.meteoMap[dateKey] : -1;
+                let cloud = window.meteoCloud && window.meteoCloud[dateKey] !== undefined ? window.meteoCloud[dateKey] : 0;
+                let ambTemp = window.meteoTemp && window.meteoTemp[dateKey] !== undefined ? window.meteoTemp[dateKey] : 30;
+                
+                let cloudFactor = 1 - (cloud * 0.007);
+                let sysEff = getSolarSystemEff(ambTemp);
+                let cEff = rad >= 0 ? (rad / 1000) * cloudFactor : ((bTime.getHours() >= 7 && bTime.getHours() <= 17) ? Math.sin((bTime.getHours() - 7) * Math.PI / 10) : 0);
+                
+                val = solarPanelKw * 1000 * sysEff * cEff;
             }
         } else {
+            let blendedRate = window.blendedPricePerUnit || 4.2;
             let bucketHours = bucketMs / (3600 * 1000);
             if (freq === '1d') {
-                val = solarPanelKw * 0.8 * (10 / 24) * 0.636 * 24 * PRICE_PER_UNIT;
+                let avgSysEff = getSolarSystemEff(32);
+                val = solarPanelKw * avgSysEff * (10 / 24) * 0.636 * 24 * blendedRate;
             } else {
-                let hourFloat = bTime.getHours() + (bTime.getMinutes() / 60);
-                if (hourFloat >= 7 && hourFloat <= 17) {
-                    let eff = Math.sin((hourFloat - 7) * Math.PI / 10);
-                    val = (solarPanelKw * 0.8 * eff) * bucketHours * PRICE_PER_UNIT;
-                }
+                let hourStr = String(bTime.getHours()).padStart(2,'0');
+                let dateKey = bTime.getFullYear() + "-" + String(bTime.getMonth()+1).padStart(2,'0') + "-" + String(bTime.getDate()).padStart(2,'0') + "T" + hourStr + ":00";
+                let rad = window.meteoMap && window.meteoMap[dateKey] !== undefined ? window.meteoMap[dateKey] : -1;
+                let cloud = window.meteoCloud && window.meteoCloud[dateKey] !== undefined ? window.meteoCloud[dateKey] : 0;
+                let ambTemp = window.meteoTemp && window.meteoTemp[dateKey] !== undefined ? window.meteoTemp[dateKey] : 30;
+                
+                let cloudFactor = 1 - (cloud * 0.007);
+                let sysEff = getSolarSystemEff(ambTemp);
+                let cEff = rad >= 0 ? (rad / 1000) * cloudFactor : ((bTime.getHours() >= 7 && bTime.getHours() <= 17) ? Math.sin((bTime.getHours() - 7) * Math.PI / 10) : 0);
+                
+                val = (solarPanelKw * sysEff * cEff) * bucketHours * blendedRate;
             }
         }
         solarData.push(val);
@@ -630,4 +884,31 @@ function renderChart(rows) {
             }
         }
     });
+
+    // Update solar data badge
+    let badgeIcon = document.getElementById('solar-badge-icon');
+    let badgeText = document.getElementById('solar-badge-text');
+    if (badgeIcon && badgeText) {
+        let now = new Date();
+        let threeDaysAgo = new Date(now);
+        threeDaysAgo.setDate(threeDaysAgo.getDate() - 3);
+        
+        // คำนวณรอบพยากรณ์ล่าสุด (GFS runs: 00/06/12/18 UTC, available ~5hrs later)
+        let utcHour = now.getUTCHours();
+        let availableRunUTC = Math.floor((utcHour - 5) / 6) * 6;
+        if (availableRunUTC < 0) availableRunUTC += 24;
+        let runTimeBKK = (availableRunUTC + 7) % 24; // Convert UTC → Bangkok (UTC+7)
+        let runStr = String(runTimeBKK).padStart(2,'0') + ':00 น.';
+        
+        if (viewingDate < threeDaysAgo) {
+            badgeIcon.textContent = '✅';
+            badgeText.innerHTML = `Solar: <strong style="color: #34d399;">ข้อมูลสภาพอากาศจริง</strong> (ERA5 Reanalysis)`;
+        } else if (viewingDate > now) {
+            badgeIcon.textContent = '🔮';
+            badgeText.innerHTML = `Solar: <strong style="color: #fbbf24;">พยากรณ์อากาศล่วงหน้า</strong> (รอบพยากรณ์ ${runStr})`;
+        } else {
+            badgeIcon.textContent = '🌤️';
+            badgeText.innerHTML = `Solar: <strong style="color: #38bdf8;">พยากรณ์วันนี้</strong> (รอบพยากรณ์ ${runStr})`;
+        }
+    }
 }

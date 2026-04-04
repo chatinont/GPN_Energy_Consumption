@@ -87,6 +87,42 @@
                     <h2 id="current-bill">--</h2>
                     <span class="unit">THB</span>
                 </div>
+
+                <!-- Billing Cycle Progress -->
+                <div style="padding: 0 16px; margin-bottom: 10px;">
+                    <div style="display: flex; justify-content: space-between; font-size: 0.75rem; color: #94a3b8; margin-bottom: 4px;">
+                        <span id="cb-cycle-days">วันที่ -- / 30</span>
+                        <span id="cb-cycle-pct">--%</span>
+                    </div>
+                    <div style="height: 4px; background: rgba(255,255,255,0.1); border-radius: 2px; overflow: hidden;">
+                        <div id="cb-progress-bar" style="height: 100%; width: 0%; background: linear-gradient(90deg, #38bdf8, #818cf8); border-radius: 2px; transition: width 0.5s;"></div>
+                    </div>
+                </div>
+
+                <!-- Usage Stats -->
+                <div style="padding: 0 16px; display: flex; flex-wrap: wrap; justify-content: space-between; font-size: 0.8rem; color: #94a3b8; margin-bottom: 8px; gap: 4px;">
+                    <span>⚡ ใช้ไป <strong id="cb-kwh" style="color: #f1f5f9;">--</strong> kWh</span>
+                    <span>เฉลี่ย <strong id="cb-avg-day" style="color: #f1f5f9;">--</strong> kWh/วัน</span>
+                    <span>💰 เฉลี่ย <strong id="cb-avg-cost" style="color: #fbbf24;">--</strong> ฿/วัน</span>
+                </div>
+
+                <!-- Mini Breakdown -->
+                <div style="padding: 0 16px 12px; font-size: 0.78rem;">
+                    <div style="background: rgba(0,0,0,0.2); border-radius: 6px; padding: 8px 10px; display: flex; flex-direction: column; gap: 3px; border: 1px solid rgba(255,255,255,0.05);">
+                        <div style="display: flex; justify-content: space-between; color: #94a3b8;">
+                            <span>ค่าพลังงานไฟฟ้า</span>
+                            <span><strong id="cb-base" style="color: #f1f5f9; font-family: monospace;">--</strong> บาท</span>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; color: #94a3b8;">
+                            <span>ค่าบริการ + Ft</span>
+                            <span><strong id="cb-svc-ft" style="color: #f1f5f9; font-family: monospace;">--</strong> บาท</span>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; color: #94a3b8;">
+                            <span>VAT 7%</span>
+                            <span><strong id="cb-vat" style="color: #f1f5f9; font-family: monospace;">--</strong> บาท</span>
+                        </div>
+                    </div>
+                </div>
             </div>
 
             <div class="metric-card">
@@ -98,6 +134,31 @@
                     <h2 id="est-bill">--</h2>
                     <span class="unit">THB</span>
                 </div>
+                
+                <div style="text-align: center; margin: 0 0 10px 0; color: #94a3b8; font-size: 0.85rem;">
+                    Est. Total Usage: <strong id="bd-total-kwh" style="color: #38bdf8;">--</strong> kWh
+                </div>
+
+                <div class="bill-breakdown" style="background: rgba(0,0,0,0.2); border-radius: 8px; padding: 12px; font-size: 0.85rem; border: 1px solid rgba(255,255,255,0.05); margin-bottom: 12px; display: flex; flex-direction: column; gap: 6px;">
+                    <div style="display: flex; justify-content: space-between; color: #94a3b8;">
+                        <span>ค่าพลังงานไฟฟ้า</span>
+                        <span><strong id="bd-base-cost" style="color: #f1f5f9; font-family: monospace; font-size: 0.95rem;">--</strong> บาท</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; color: #94a3b8;">
+                        <span>ค่าบริการ</span>
+                        <span><strong id="bd-svc-cost" style="color: #f1f5f9; font-family: monospace; font-size: 0.95rem;">38.22</strong> บาท</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; color: #94a3b8;">
+                        <span>ค่าไฟฟ้าผันแปร (Ft)</span>
+                        <span><strong id="bd-ft-cost" style="color: #f1f5f9; font-family: monospace; font-size: 0.95rem;">--</strong> บาท</span>
+                    </div>
+                    <div style="border-top: 1px dashed rgba(255,255,255,0.15); margin: 4px 0;"></div>
+                    <div style="display: flex; justify-content: space-between; color: #94a3b8;">
+                        <span>ภาษีมูลค่าเพิ่ม 7%</span>
+                        <span><strong id="bd-vat-cost" style="color: #f1f5f9; font-family: monospace; font-size: 0.95rem;">--</strong> บาท</span>
+                    </div>
+                </div>
+
                 <div class="card-footer" style="margin-top: auto;">
                     <p id="budget-warning" style="display: none; color: var(--glow-red);"><span class="material-symbols-rounded" style="vertical-align: middle; font-size: 1rem;">warning</span> Over Budget!</p>
                 </div>
@@ -126,6 +187,23 @@
                     <h2 id="solar-est-bill">--</h2>
                     <span class="unit">THB</span>
                 </div>
+
+                <!-- Solar Stats -->
+                <div style="padding: 0 16px; font-size: 0.8rem; color: #94a3b8; margin-bottom: 8px;">
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+                        <span>☀️ ผลิตได้/เดือน</span>
+                        <strong id="sol-daily-kwh" style="color: #fbbf24;">-- kWh</strong>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+                        <span>💰 ประหยัด/เดือน</span>
+                        <strong id="sol-daily-saving" style="color: #34d399;">-- บาท</strong>
+                    </div>
+                    <div style="display: flex; justify-content: space-between;">
+                        <span>🔌 ใช้ไฟจากการไฟ</span>
+                        <strong id="sol-grid-pct" style="color: #38bdf8;">--%</strong>
+                    </div>
+                </div>
+
                 <div class="card-footer" style="margin-top: auto;">
                     <p id="solar-savings" class="t-green">-- savings</p>
                 </div>
@@ -146,13 +224,22 @@
                         <option value="last_7_days">Last 7 Days vs Prev 7 Days</option>
                         <option value="this_month">Current Billing Cycle vs Prev</option>
                     </select>
-                    <input type="date" id="customDateInput" style="display: none;">
+                    <div id="customDateContainer" style="display: none; align-items: center; gap: 4px;">
+                        <button id="prevDateBtn" style="background: none; border: none; color: #94a3b8; cursor: pointer; display: flex; padding: 4px; border-radius: 4px;" onmouseover="this.style.background='rgba(255,255,255,0.1)'" onmouseout="this.style.background='none'"><span class="material-symbols-rounded" style="font-size: 1.2rem;">chevron_left</span></button>
+                        <span id="dayOfWeekLabel" style="font-size: 0.85rem; font-weight: 600; min-width: 50px; text-align: center;"></span>
+                        <input type="date" id="customDateInput" style="height: 100%; border: 1px solid rgba(255,255,255,0.2); border-radius: 6px; background: rgba(255,255,255,0.05); color: #f1f5f9; padding: 4px 8px; font-family: 'Inter', sans-serif; cursor: pointer;">
+                        <button id="nextDateBtn" style="background: none; border: none; color: #94a3b8; cursor: pointer; display: flex; padding: 4px; border-radius: 4px;" onmouseover="this.style.background='rgba(255,255,255,0.1)'" onmouseout="this.style.background='none'"><span class="material-symbols-rounded" style="font-size: 1.2rem;">chevron_right</span></button>
+                    </div>
                     <select id="freqFilter">
                         <option value="15m">15 Mins</option>
                         <option value="1h">Hourly</option>
                         <option value="1d">Daily</option>
                     </select>
                 </div>
+            </div>
+            <div id="solar-data-badge" style="font-size: 0.8rem; color: #94a3b8; padding: 4px 12px; display: flex; align-items: center; gap: 6px;">
+                <span id="solar-badge-icon" style="font-size: 0.9rem;">☀️</span>
+                <span id="solar-badge-text">Solar: Loading...</span>
             </div>
             <div class="chart-container">
                 <canvas id="usageChart"></canvas>
