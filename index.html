@@ -220,11 +220,11 @@
                     </select>
                     <select id="timeRangeFilter">
                         <option value="today_yesterday">Today vs Yesterday</option>
-                        <option value="custom_date">Select Date...</option>
+                        <option value="custom_date" selected>Select Date...</option>
                         <option value="last_7_days">Last 7 Days vs Prev 7 Days</option>
                         <option value="this_month">Current Billing Cycle vs Prev</option>
                     </select>
-                    <div id="customDateContainer" style="display: none; align-items: center; gap: 4px;">
+                    <div id="customDateContainer" style="display: flex; align-items: center; gap: 4px;">
                         <button id="prevDateBtn" style="background: none; border: none; color: #94a3b8; cursor: pointer; display: flex; padding: 4px; border-radius: 4px;" onmouseover="this.style.background='rgba(255,255,255,0.1)'" onmouseout="this.style.background='none'"><span class="material-symbols-rounded" style="font-size: 1.2rem;">chevron_left</span></button>
                         <span id="dayOfWeekLabel" style="font-size: 0.85rem; font-weight: 600; min-width: 50px; text-align: center;"></span>
                         <input type="date" id="customDateInput" style="height: 100%; border: 1px solid rgba(255,255,255,0.2); border-radius: 6px; background: rgba(255,255,255,0.05); color: #f1f5f9; padding: 4px 8px; font-family: 'Inter', sans-serif; cursor: pointer;">
