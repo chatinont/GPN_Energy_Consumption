@@ -123,10 +123,20 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     const batteryFilter = document.getElementById('batterySizeFilter');
-    const dodFilter = document.getElementById('dodFilter');
+    const investmentFilter = document.getElementById('solarInvestment');
+    
+    // Load saved investment cost
+    if (investmentFilter) {
+        const savedInvestment = localStorage.getItem('solar_investment_cost');
+        if (savedInvestment) investmentFilter.value = savedInvestment;
+    }
     
     const updateBattery = () => {
         if (window.globalRawRows) {
+            // Save investment cost when changed
+            if (investmentFilter) {
+                localStorage.setItem('solar_investment_cost', investmentFilter.value);
+            }
             calculateBillingCosts(window.globalRawRows);
             renderChart(window.globalRawRows);
         }
@@ -135,6 +145,39 @@ document.addEventListener('DOMContentLoaded', () => {
     if (batteryFilter) {
         batteryFilter.addEventListener('change', updateBattery);
         batteryFilter.addEventListener('input', updateBattery);
+    }
+    if (investmentFilter) {
+        investmentFilter.addEventListener('change', updateBattery);
+        investmentFilter.addEventListener('input', updateBattery);
+    }
+
+    // Simulation Sliders
+    const daySlider = document.getElementById('day-adj-slider');
+    const eveningSlider = document.getElementById('evening-adj-slider');
+    const nightSlider = document.getElementById('night-adj-slider');
+
+    const updateSliderLabels = () => {
+        if (daySlider) document.getElementById('day-adj-label').textContent = (daySlider.value >= 0 ? '+' : '') + daySlider.value + '%';
+        if (eveningSlider) document.getElementById('evening-adj-label').textContent = (eveningSlider.value >= 0 ? '+' : '') + eveningSlider.value + '%';
+        if (nightSlider) document.getElementById('night-adj-label').textContent = (nightSlider.value >= 0 ? '+' : '') + nightSlider.value + '%';
+    };
+
+    [daySlider, eveningSlider, nightSlider].forEach(slider => {
+        if (slider) {
+            slider.addEventListener('input', () => {
+                updateSliderLabels();
+                updateBattery(); // Trigger re-calculation
+            });
+        }
+    });
+
+    const resetBtn = document.getElementById('reset-scenarios');
+    if (resetBtn) {
+        resetBtn.addEventListener('click', () => {
+            [daySlider, eveningSlider, nightSlider].forEach(s => { if (s) s.value = 0; });
+            updateSliderLabels();
+            updateBattery();
+        });
     }
     
     const themeToggle = document.getElementById('theme-toggle');
@@ -409,29 +452,37 @@ function parseNumber(str) {
 }
 
 function processData(rows) {
-    if (rows.length === 0) return;
-
-    window.globalRawRows = rows;
-
-    let now = new Date();
-    let syncText = document.getElementById('last-sync-time');
-    if (syncText) {
-        syncText.innerText = `Updated ${now.getHours().toString().padStart(2,'0')}:${now.getMinutes().toString().padStart(2,'0')}`;
+    if (rows.length === 0) {
+        document.getElementById('loader').style.display = 'none';
+        return;
     }
 
-    // Get the most recent row
-    const lastRow = rows[rows.length - 1];
-    
-    // Calculate metrics
-    calculateRealtime(lastRow);
-    calculateBillingCosts(rows);
-    renderChart(rows);
+    try {
+        window.globalRawRows = rows;
+        let now = new Date();
+        let syncText = document.getElementById('last-sync-time');
+        if (syncText) {
+            syncText.innerText = `Updated ${now.getHours().toString().padStart(2,'0')}:${now.getMinutes().toString().padStart(2,'0')}`;
+        }
 
-    // Hide loader smoothly
-    document.getElementById('loader').style.opacity = '0';
-    setTimeout(() => {
-        document.getElementById('loader').style.display = 'none';
-    }, 500);
+        const lastRow = rows[rows.length - 1];
+        
+        calculateRealtime(lastRow);
+        calculateBillingCosts(rows);
+        calculateHistoricalAverages(rows); // New summary from all history
+        renderChart(rows);
+    } catch (err) {
+        console.error('Crash during processData:', err);
+    } finally {
+        // FORCE HIDE LOADERS regardless of success/error
+        setTimeout(() => {
+            const loader = document.getElementById('loader');
+            if (loader) {
+                loader.style.opacity = '0';
+                setTimeout(() => loader.style.display = 'none', 500);
+            }
+        }, 800);
+    }
 }
 
 function calculateRealtime(lastRow) {
@@ -485,21 +536,32 @@ function calculateBillingCosts(rows) {
     endOfCycle.setMonth(endOfCycle.getMonth() + 1);
     let daysInCycle = Math.round((endOfCycle.getTime() - startCycle.getTime()) / (24*3600*1000));
 
-    let cycleKwh = 0;
+    let cycleKwh = 0;       // Actual
+    let cycleSimKwh = 0;    // Simulated (Actual * Scaling Sliders)
     let cycleCount = 0;
     let cycleSolarGridKwh = 0;
     
+    // Scaling Factors from Sliders
+    const dayScale = 1 + (parseFloat(document.getElementById('day-adj-slider')?.value || 0) / 100);
+    const eveScale = 1 + (parseFloat(document.getElementById('evening-adj-slider')?.value || 0) / 100);
+    const niteScale = 1 + (parseFloat(document.getElementById('night-adj-slider')?.value || 0) / 100);
+    
     // Period counters
     let cycleSolarKwh = 0;   // 07:00 - 17:00
-    let cycleEveningKwh = 0; // 17:00 - 21:00
-    let cycleNightKwh = 0;   // 21:00 - 07:00
+    let cycleEveningKwh = 0; // 17:00 - 22:00
+    let cycleNightKwh = 0;   // 22:00 - 07:00
+    
+    let cycleDayGridKwh = 0;  // Net import Day
+    let cycleEveGridKwh = 0;  // Net import Eve
+    let cycleNiteGridKwh = 0; // Net import Nite
     
     let solarPanelKw = getSolarKW();
     let batteryFullCapacity = getBatteryKWh();
      // dodEl removed
     let batteryDoD = 0.8;
     let usableBatteryCapacity = batteryFullCapacity * batteryDoD;
-    let currentBattery = 0;
+    let currentBatterySim = 0;
+    let currentBatteryBase = 0;
 
     let todayKwh = 0;
     let todayCount = 0;
@@ -516,6 +578,22 @@ function calculateBillingCosts(rows) {
     // Sort chronologically for simulation stability
     let sortedRows = Array.from(uniqueMap.values()).sort((a,b) => parseRowDate(a[0]) - parseRowDate(b[0]));
 
+    // Declare globals for the loop (re-initialized each run)
+    window.baselineSolarGridKwh = 0;
+    window.baselineDayImport = 0;
+    window.baselineEveImport = 0;
+    window.baselineNiteImport = 0;
+    
+    // Reset Baseline Period Totals (Gross)
+    window.baselineSolarKwh = 0;
+    window.baselineEveKwh = 0;
+    window.baselineNiteKwh = 0;
+    
+    // Reset Simulated Period Totals (Gross)
+    window.cycleSolarSimTotal = 0;
+    window.cycleEveSimTotal = 0;
+    window.cycleNiteSimTotal = 0;
+
     for (let r of sortedRows) {
         let rDate = parseRowDate(r[0]);
         if (rDate >= startCycle) {
@@ -524,10 +602,31 @@ function calculateBillingCosts(rows) {
             cycleCount++;
             
             let hour = rDate.getHours();
-            // Refined Periods
+            
+            // Get Scaling Factor for this record
+            let currentScale = niteScale;
+            if (hour >= 7 && hour < 17) currentScale = dayScale;
+            else if (hour >= 17 && hour < 22) currentScale = eveScale;
+
+            let simulatedAddedKwh = addedKwh * currentScale;
+            cycleSimKwh += simulatedAddedKwh;
+
+            // Tracking Simulated Totals for Period Breakdown UI (Gross)
+            if (hour >= 7 && hour < 17) {
+                window.cycleSolarSimTotal = (window.cycleSolarSimTotal || 0) + simulatedAddedKwh;
+                window.baselineSolarKwh = (window.baselineSolarKwh || 0) + addedKwh;
+            } else if (hour >= 17 && hour < 22) {
+                window.cycleEveSimTotal = (window.cycleEveSimTotal || 0) + simulatedAddedKwh;
+                window.baselineEveKwh = (window.baselineEveKwh || 0) + addedKwh;
+            } else {
+                window.cycleNiteSimTotal = (window.cycleNiteSimTotal || 0) + simulatedAddedKwh;
+                window.baselineNiteKwh = (window.baselineNiteKwh || 0) + addedKwh;
+            }
+
+            // Refined Periods (Tracking Actual for UI metrics)
             if (hour >= 7 && hour < 17) {
                 cycleSolarKwh += addedKwh;
-            } else if (hour >= 17 && hour < 21) {
+            } else if (hour >= 17 && hour < 22) {
                 cycleEveningKwh += addedKwh;
             } else {
                 cycleNightKwh += addedKwh;
@@ -543,17 +642,24 @@ function calculateBillingCosts(rows) {
             let cloudFactor = 1 - (cloud * 0.007);
             let sysEff = getSolarSystemEff(ambTemp);
             
+            // Per-period grid import tracking for accurate simulation UI
+            let isDay = (hour >= 7 && hour < 17);
+            let isEve = (hour >= 17 && hour < 22);
+            let isNite = !isDay && !isEve;
+            
             // Solar Cutoff logic: If irradiance is below cutoff, production is zero
             let solarEff = 0;
             if (rad >= SOLAR_RAD_CUTOFF) {
-                solarEff = (rad / 1000) * cloudFactor;
+                // Open-Meteo rad already includes cloud effects. Do NOT multiply by cloudFactor again.
+                solarEff = (rad / 1000); 
             } else if (rad < 0) {
-                // Fallback for missing weather data if it's daytime
-                solarEff = (hour >= 7 && hour <= 17) ? Math.sin((hour - 7) * Math.PI / 10) : 0;
+                // Fallback for missing weather data if it's daytime - apply cloudFactor here as SIN is ideal
+                solarEff = (hour >= 7 && hour <= 17) ? (Math.sin((hour - 7) * Math.PI / 10) * cloudFactor) : 0;
             }
             
             let solarProduced = solarPanelKw * sysEff * solarEff * 0.25; 
-            let usageWithExtra = (rDate.getHours() >= 7 && rDate.getHours() <= 17) ? addedKwh * (1 + EXTRA_USAGE_EST) : addedKwh;
+            // Simulation is based on simulated usage
+            let usageWithExtra = simulatedAddedKwh * (1 + EXTRA_USAGE_EST); 
             
             let excessSolar = solarProduced - usageWithExtra;
             let gridImport = 0;
@@ -563,19 +669,38 @@ function calculateBillingCosts(rows) {
                 todayCount++;
             }
 
+            // --- Path A: Simulation (with sliders) ---
+            let gridImportSim = 0;
             if (excessSolar > 0) {
-                // Charging: Factor in Charge Efficiency
-                let chargeAmt = Math.min(excessSolar * BATTERY_EFF, usableBatteryCapacity - currentBattery);
-                currentBattery += chargeAmt;
+                let chargeAmt = Math.min(excessSolar * BATTERY_EFF, usableBatteryCapacity - currentBatterySim);
+                currentBatterySim += chargeAmt;
             } else {
-                // Discharging: Factor in Discharge Efficiency (Loss)
                 let deficit = -excessSolar;
-                let dischargeAmt = Math.min(deficit, currentBattery * BATTERY_EFF);
-                currentBattery -= (dischargeAmt / BATTERY_EFF);
-                gridImport = deficit - dischargeAmt;
+                let dischargeAmt = Math.min(deficit, currentBatterySim * BATTERY_EFF);
+                currentBatterySim -= (dischargeAmt / BATTERY_EFF);
+                gridImportSim = deficit - dischargeAmt;
             }
-            
-            cycleSolarGridKwh += gridImport;
+            cycleSolarGridKwh += gridImportSim;
+            if (isDay) cycleDayGridKwh = (cycleDayGridKwh || 0) + gridImportSim;
+            else if (isEve) cycleEveGridKwh = (cycleEveGridKwh || 0) + gridImportSim;
+            else cycleNiteGridKwh = (cycleNiteGridKwh || 0) + gridImportSim;
+
+            // --- Path B: Baseline (0% scales) ---
+            let excessSolarBase = solarProduced - addedKwh;
+            let gridImportBase = 0;
+            if (excessSolarBase > 0) {
+                let chargeAmt = Math.min(excessSolarBase * BATTERY_EFF, usableBatteryCapacity - currentBatteryBase);
+                currentBatteryBase += chargeAmt;
+            } else {
+                let deficit = -excessSolarBase;
+                let dischargeAmt = Math.min(deficit, currentBatteryBase * BATTERY_EFF);
+                currentBatteryBase -= (dischargeAmt / BATTERY_EFF);
+                gridImportBase = deficit - dischargeAmt;
+            }
+            window.baselineSolarGridKwh = (window.baselineSolarGridKwh || 0) + gridImportBase;
+            window.baselineDayImport = (window.baselineDayImport || 0) + (isDay ? gridImportBase : 0);
+            window.baselineEveImport = (window.baselineEveImport || 0) + (isEve ? gridImportBase : 0);
+            window.baselineNiteImport = (window.baselineNiteImport || 0) + (isNite ? gridImportBase : 0);
         }
     }
 
@@ -628,36 +753,93 @@ function calculateBillingCosts(rows) {
         let msElapsed = Math.max(1, today.getTime() - startCycle.getTime());
         let exactDaysElapsed = msElapsed / (24*3600*1000);
         
-        let estFullMonthKwh = (cycleKwh / exactDaysElapsed) * daysInCycle;
-        let estFullMonthBill = calcMeaProgressive(estFullMonthKwh);
-        document.getElementById('est-bill').innerText = estFullMonthBill.toLocaleString('en-US', {maximumFractionDigits: 0});
+        // Estimate uses SIMULATED GRID IMPORT (Net)
+        let estFullMonthKwhActual = (cycleSimKwh / exactDaysElapsed) * daysInCycle; // Total needed
+        let estFullMonthKwhImport = (cycleSolarGridKwh / exactDaysElapsed) * daysInCycle; // Actually paid to grid
+        
+        let estFullMonthBillBase = calcMeaProgressive(estFullMonthKwhActual);
+        let estFullMonthBillNet = calcMeaProgressive(estFullMonthKwhImport);
+        
+        // UI REVERT: Show Gross Bill in center
+        let ebEl = document.getElementById('est-bill');
+        if (ebEl) ebEl.innerText = estFullMonthBillBase.toLocaleString('en-US', {maximumFractionDigits: 0});
 
         let estKwhEl = document.getElementById('est-kwh');
         if (estKwhEl) {
-            // Stats Alignment
-            document.getElementById('est-kwh').textContent = estFullMonthKwh.toLocaleString('en-US', {maximumFractionDigits: 0});
-            document.getElementById('est-avg-day').textContent = (estFullMonthKwh / daysInCycle).toFixed(1);
-            document.getElementById('est-avg-cost').textContent = (estFullMonthBill / daysInCycle).toFixed(0);
+            // Stats Alignment - Show GROSS usage for center card
+            document.getElementById('est-kwh').textContent = estFullMonthKwhActual.toLocaleString('en-US', {maximumFractionDigits: 0});
+            document.getElementById('est-avg-day').textContent = (estFullMonthKwhActual / daysInCycle).toFixed(1);
+            document.getElementById('est-avg-cost').textContent = (estFullMonthBillBase / daysInCycle).toFixed(0);
 
-            // Budget Progress
-            let budgetPct = Math.round((estFullMonthBill / BUDGET_MONTHLY) * 100);
+            // Budget Progress based on GROSS Bill
+            let budgetPct = Math.round((estFullMonthBillBase / BUDGET_MONTHLY) * 100);
             document.getElementById('est-budget-pct').textContent = `${budgetPct}%`;
             document.getElementById('est-budget-bar').style.width = `${Math.min(100, budgetPct)}%`;
             if (budgetPct > 100) document.getElementById('est-budget-bar').style.background = 'var(--glow-red)';
             
-            // Project periods for full month
-            let solarPct = cycleKwh > 0 ? (cycleSolarKwh / cycleKwh) : 0;
-            let eveningPct = cycleKwh > 0 ? (cycleEveningKwh / cycleKwh) : 0;
-            let nightPct = cycleKwh > 0 ? (cycleNightKwh / cycleKwh) : 0;
             
-            document.getElementById('est-solar-val').textContent = `${(estFullMonthKwh * solarPct).toFixed(0)} kWh (${(solarPct * 100).toFixed(0)}%)`;
-            document.getElementById('est-evening-val').textContent = `${(estFullMonthKwh * eveningPct).toFixed(0)} kWh (${(eveningPct * 100).toFixed(0)}%)`;
-            document.getElementById('est-night-val').textContent = `${(estFullMonthKwh * nightPct).toFixed(0)} kWh (${(nightPct * 100).toFixed(0)}%)`;
+            // Project Full Month Gross per period using simulated totals
+            let estSolarGross = (window.cycleSolarSimTotal / exactDaysElapsed) * daysInCycle;
+            let estEveningGross = (window.cycleEveSimTotal / exactDaysElapsed) * daysInCycle;
+            let estNightGross = (window.cycleNiteSimTotal / exactDaysElapsed) * daysInCycle;
+
+            document.getElementById('est-solar-val').textContent = `${estSolarGross.toFixed(0)} kWh`;
+            document.getElementById('est-evening-val').textContent = `${estEveningGross.toFixed(0)} kWh`;
+            document.getElementById('est-night-val').textContent = `${estNightGross.toFixed(0)} kWh`;
+
+            // Unify Baseline tracking (ensure identical simulated path at 0% vs baseline path)
+            // For kWh deltas, we compare Projected Gross Sim vs Projected Gross Baseline
+            const dayBaseGrossProj = ((window.baselineSolarKwh || 0) / exactDaysElapsed) * daysInCycle;
+            const eveBaseGrossProj = ((window.baselineEveKwh || 0) / exactDaysElapsed) * daysInCycle;
+            const niteBaseGrossProj = ((window.baselineNiteKwh || 0) / exactDaysElapsed) * daysInCycle;
+
+            const updateDeltaLabel = (id, currentVal, baseVal) => {
+                let el = document.getElementById(id);
+                if (!el) return;
+                let diff = currentVal - baseVal;
+                if (Math.abs(diff) < 0.1) {
+                    el.textContent = "";
+                } else {
+                    let sign = diff > 0 ? "+" : "";
+                    el.textContent = `${sign}${diff.toFixed(1)} kWh`;
+                    el.style.color = diff > 0 ? "var(--glow-red)" : "#34d399";
+                    el.style.opacity = "1";
+                }
+            };
+
+            // Single update point for period deltas (Comparing Gross vs Gross)
+            updateDeltaLabel('day-adj-cost', estSolarGross, dayBaseGrossProj);
+            updateDeltaLabel('evening-adj-cost', estEveningGross, eveBaseGrossProj);
+            updateDeltaLabel('night-adj-cost', estNightGross, niteBaseGrossProj);
+
+            // Update Header Deltas (Net changes)
+            const updateHeaderDelta = (id, currentVal, baseVal) => {
+                let el = document.getElementById(id);
+                if (!el) return;
+                let diff = currentVal - baseVal;
+                if (Math.abs(diff) < 2) {
+                    el.textContent = "";
+                } else {
+                    let sign = diff > 0 ? "+" : "";
+                    el.textContent = `(${sign}${Math.round(diff).toLocaleString()} ฿)`;
+                    el.style.color = diff > 0 ? "var(--glow-red)" : "#34d399";
+                }
+            };
+
+            // Compare Simulated Gross vs Original Baseline Gross (actual raw data)
+            const estBaselineGrossKwh = (cycleKwh / exactDaysElapsed) * daysInCycle;
+            const baselineGrossBill = calcMeaProgressive(estBaselineGrossKwh);
+            updateHeaderDelta('est-bill-delta', estFullMonthBillBase, baselineGrossBill);
+            
+            // Compare Simulated Net vs Baseline Net (0% adjustment)
+            const estBaselineNetKwh = (window.baselineSolarGridKwh / exactDaysElapsed) * daysInCycle;
+            const baselineNetBill = calcMeaProgressive(estBaselineNetKwh);
+            updateHeaderDelta('solar-bill-delta', estFullMonthBillNet, baselineNetBill);
         }
 
         let bdBase = document.getElementById('bd-base-total');
         if (bdBase) {
-            let breakdown = calcMeaBreakdown(estFullMonthKwh);
+            let breakdown = calcMeaBreakdown(estFullMonthKwhActual);
             bdBase.innerText = breakdown.base.toLocaleString('en-US', {maximumFractionDigits: 0});
             document.getElementById('bd-svc-ft-total').innerText = (breakdown.service + breakdown.ft).toLocaleString('en-US', {maximumFractionDigits: 0});
             document.getElementById('bd-vat-total').innerText = breakdown.vat.toLocaleString('en-US', {maximumFractionDigits: 0});
@@ -665,30 +847,48 @@ function calculateBillingCosts(rows) {
 
         let budgetWarning = document.getElementById('budget-warning');
         if (budgetWarning) {
-            if (estFullMonthBill > 3000) {
+            if (estFullMonthBillBase > 3000) {
                 budgetWarning.style.display = 'block';
             } else {
                 budgetWarning.style.display = 'none';
             }
         }
 
-        let estSolarFullMonthKwh = (cycleSolarGridKwh / exactDaysElapsed) * daysInCycle; // Corrected Solar Estimation
-        let estSolarFullMonthBill = calcMeaProgressive(estSolarFullMonthKwh);
-        document.getElementById('solar-est-bill').innerText = estSolarFullMonthBill.toLocaleString('en-US', {maximumFractionDigits: 0});
+        // Right Card (ROI) Updates
+        document.getElementById('solar-est-bill').innerText = estFullMonthBillNet.toLocaleString('en-US', {maximumFractionDigits: 0});
         
-        estFullMonthBill = calcMeaProgressive(estFullMonthKwh);
-        let savings = estFullMonthBill - estSolarFullMonthBill;
-        document.getElementById('solar-savings').innerText = `Est. ~ ${savings.toLocaleString('en-US', {maximumFractionDigits: 0})} THB/mo savings`;
+        let savings = estFullMonthBillBase - estFullMonthBillNet;
+        
+        // Payback Calculation
+        const investmentIn = document.getElementById('solarInvestment');
+        let investment = investmentIn ? parseFloat(investmentIn.value) : 0;
+        let paybackEl = document.getElementById('payback-years');
+        
+        if (paybackEl) {
+            if (savings > 0 && investment > 0) {
+                let yearlySavings = savings * 12;
+                let years = investment / yearlySavings;
+                paybackEl.innerText = years.toFixed(1) + " ปี";
+            } else {
+                paybackEl.innerText = "-- ปี";
+            }
+        }
 
         // Solar card — production stats (True Monthly Totals)
         let solDailyKwh = document.getElementById('sol-daily-kwh');
+        let solDailySaving = document.getElementById('sol-daily-saving');
+        let solGridPct = document.getElementById('sol-grid-pct');
+        
         if (solDailyKwh) {
-            let monthlySolarProd = (estFullMonthKwh - estSolarFullMonthKwh); 
-            // Note: Producing more than self-consumption is possible if battery fills or export is enabled
+            let monthlySolarProd = (estFullMonthKwhActual - estFullMonthKwhImport); 
             solDailyKwh.textContent = monthlySolarProd.toLocaleString('en-US', {maximumFractionDigits: 0}) + ' kWh';
-            document.getElementById('sol-daily-saving').textContent = savings.toLocaleString('en-US', {maximumFractionDigits: 0}) + ' บาท';
-            let gridPct = estSolarFullMonthKwh > 0 ? Math.round((estSolarFullMonthKwh / estFullMonthKwh) * 100) : 0;
-            document.getElementById('sol-grid-pct').textContent = gridPct + '%';
+        }
+        if (solDailySaving) {
+            solDailySaving.textContent = savings.toLocaleString('en-US', {maximumFractionDigits: 0}) + ' บาท';
+        }
+        if (solGridPct) {
+            let gridPct = estFullMonthKwhActual > 0 ? Math.round((estFullMonthKwhImport / estFullMonthKwhActual) * 100) : 0;
+            solGridPct.textContent = gridPct + '%';
         }
     }
 
@@ -717,6 +917,56 @@ function calculateBillingCosts(rows) {
 }
 
 let currentChart = null;
+
+function calculateHistoricalAverages(rows) {
+    if (!rows || rows.length === 0) return;
+
+    let dayTotals = {}; // { '2026-03-01': { solar: 0, eve: 0, nite: 0 } }
+    
+    rows.forEach(r => {
+        let rDate = parseRowDate(r[0]);
+        if (isNaN(rDate.getTime())) return;
+        
+        let dateKey = rDate.toISOString().split('T')[0];
+        if (!dayTotals[dateKey]) {
+            dayTotals[dateKey] = { solar: 0, eve: 0, nite: 0 };
+        }
+        
+        let kwh = parseNumber(r[2]);
+        let hour = rDate.getHours();
+        
+        if (hour >= 7 && hour < 17) {
+            dayTotals[dateKey].solar += kwh;
+        } else if (hour >= 17 && hour < 22) {
+            dayTotals[dateKey].eve += kwh;
+        } else {
+            dayTotals[dateKey].nite += kwh;
+        }
+    });
+    
+    let uniqueDays = Object.keys(dayTotals).length;
+    if (uniqueDays === 0) return;
+    
+    let grandSolar = 0, grandEve = 0, grandNite = 0;
+    Object.values(dayTotals).forEach(day => {
+        grandSolar += day.solar;
+        grandEve += day.eve;
+        grandNite += day.nite;
+    });
+    
+    let avgSolar = grandSolar / uniqueDays;
+    let avgEve = grandEve / uniqueDays;
+    let avgNite = grandNite / uniqueDays;
+    
+    const setAvg = (id, val) => {
+        let el = document.getElementById(id);
+        if (el) el.textContent = val.toFixed(1) + ' kWh';
+    };
+    
+    setAvg('hist-solar-avg', avgSolar);
+    setAvg('hist-eve-avg', avgEve);
+    setAvg('hist-nite-avg', avgNite);
+}
 
 function renderChart(rows) {
     const timeRange = document.getElementById('timeRangeFilter') ? document.getElementById('timeRangeFilter').value : 'today_yesterday';
@@ -813,9 +1063,6 @@ function renderChart(rows) {
             let mo = (bTime.getMonth() + 1).toString().padStart(2, '0');
             labels.push(`${d}/${mo}`);
         }
-        baseData.push([]);
-        compareData.push([]);
-        batteryDataBucket.push([]);
     }
 
     let solarPanelKw = getSolarKW();
@@ -1191,3 +1438,14 @@ function renderChart(rows) {
         }
     }
 }
+
+// --- Interactive Keyboard Control for Sliders (Focus on Hover) ---
+document.querySelectorAll('.adj-slider').forEach(slider => {
+    slider.addEventListener('mouseenter', () => {
+        slider.focus();
+    });
+    // Optional: Blur on leave if you want to release keyboard control
+    slider.addEventListener('mouseleave', () => {
+        slider.blur();
+    });
+});
