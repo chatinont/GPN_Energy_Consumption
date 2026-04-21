@@ -133,14 +133,22 @@ document.addEventListener('DOMContentLoaded', () => {
     
     const updateBattery = () => {
         if (window.globalRawRows) {
-            // Save investment cost when changed
-            if (investmentFilter) {
-                localStorage.setItem('solar_investment_cost', investmentFilter.value);
-            }
+            // Save settings when changed
+            if (investmentFilter) localStorage.setItem('solar_investment_cost', investmentFilter.value);
+            const meterFilter = document.getElementById('meterTypeFilter');
+            if (meterFilter) localStorage.setItem('meter_type', meterFilter.value);
+
             calculateBillingCosts(window.globalRawRows);
             renderChart(window.globalRawRows);
         }
     };
+
+    const meterFilter = document.getElementById('meterTypeFilter');
+    if (meterFilter) {
+        const savedMeter = localStorage.getItem('meter_type');
+        if (savedMeter) meterFilter.value = savedMeter;
+        meterFilter.addEventListener('change', updateBattery);
+    }
     
     if (batteryFilter) {
         batteryFilter.addEventListener('change', updateBattery);
@@ -299,10 +307,28 @@ function getSolarSystemEff(ambientTemp) {
     return INVERTER_EFF * SOILING_LOSS * WIRING_LOSS * MISMATCH_LOSS * tempFactor;
 }
 
-// MEA Rate Constants
+// MEA Rate Constants (Normal)
 const MEA_FT = 0.1623;
 const MEA_SERVICE_NORMAL = 38.22;
 const MEA_VAT = 1.07;
+
+// MEA TOU Rates (Residential 1.2)
+const MEA_TOU_ON_PEAK = 5.7982;
+const MEA_TOU_OFF_PEAK = 2.6369;
+const MEA_SERVICE_TOU = 24.62;
+
+function isTouOnPeak(date) {
+    const day = date.getDay(); // 0 = Sun, 6 = Sat
+    const hour = date.getHours();
+    
+    // Sat & Sun are always Off-Peak
+    if (day === 0 || day === 6) return false;
+    
+    // Mon-Fri: On-Peak is 09:00-22:00
+    if (hour >= 9 && hour < 22) return true;
+    
+    return false;
+}
 
 function calcMeaProgressive(kwh) {
     if(kwh <= 0) return 0;
@@ -351,6 +377,37 @@ function calcMeaEnergy(kwh) {
         base = kwh * 3.2484;
     }
     return (base + (kwh * MEA_FT)) * MEA_VAT; 
+}
+
+function calcMeaTou(onPeak, offPeak) {
+    const kwh = onPeak + offPeak;
+    if (kwh <= 0) return 0;
+    const base = (onPeak * MEA_TOU_ON_PEAK) + (offPeak * MEA_TOU_OFF_PEAK);
+    return (base + (kwh * MEA_FT) + MEA_SERVICE_TOU) * MEA_VAT;
+}
+
+function calcMeaTouEnergyOnly(onPeak, offPeak) {
+    const kwh = onPeak + offPeak;
+    if (kwh <= 0) return 0;
+    const base = (onPeak * MEA_TOU_ON_PEAK) + (offPeak * MEA_TOU_OFF_PEAK);
+    return (base + (kwh * MEA_FT)) * MEA_VAT;
+}
+
+function calcMeaTouBreakdown(onPeak, offPeak) {
+    const kwh = onPeak + offPeak;
+    if (kwh <= 0) return { base: 0, ft: 0, service: MEA_SERVICE_TOU, vat: 0, total: 0 };
+    const base = (onPeak * MEA_TOU_ON_PEAK) + (offPeak * MEA_TOU_OFF_PEAK);
+    const ft = kwh * MEA_FT;
+    const service = MEA_SERVICE_TOU;
+    const beforeVat = base + ft + service;
+    const vat = beforeVat * 0.07;
+    return {
+        base: base,
+        ft: ft,
+        service: service,
+        vat: vat,
+        total: beforeVat + vat
+    };
 }
 
 function getBillingCycleStartMs(dObj) {
@@ -536,15 +593,26 @@ function calculateBillingCosts(rows) {
     endOfCycle.setMonth(endOfCycle.getMonth() + 1);
     let daysInCycle = Math.round((endOfCycle.getTime() - startCycle.getTime()) / (24*3600*1000));
 
-    let cycleKwh = 0;       // Actual
-    let cycleSimKwh = 0;    // Simulated (Actual * Scaling Sliders)
-    let cycleCount = 0;
-    let cycleSolarGridKwh = 0;
-    
+    const meterType = document.getElementById('meterTypeFilter')?.value || 'normal';
+
     // Scaling Factors from Sliders
     const dayScale = 1 + (parseFloat(document.getElementById('day-adj-slider')?.value || 0) / 100);
     const eveScale = 1 + (parseFloat(document.getElementById('evening-adj-slider')?.value || 0) / 100);
     const niteScale = 1 + (parseFloat(document.getElementById('night-adj-slider')?.value || 0) / 100);
+    
+    // Accumulators
+    let cycleKwh = 0;       // Actual Gross
+    let cycleOnPeakKwh = 0;
+    let cycleOffPeakKwh = 0;
+    
+    let cycleSimKwh = 0;    // Simulated Gross (Actual * Scaling Sliders)
+    let cycleOnPeakSimKwh = 0;
+    let cycleOffPeakSimKwh = 0;
+    
+    let cycleCount = 0;
+    let cycleSolarGridKwh = 0; // Simulated Net
+    let cycleOnPeakGridKwh = 0;
+    let cycleOffPeakGridKwh = 0;
     
     // Period counters
     let cycleSolarKwh = 0;   // 07:00 - 17:00
@@ -583,11 +651,15 @@ function calculateBillingCosts(rows) {
     window.baselineDayImport = 0;
     window.baselineEveImport = 0;
     window.baselineNiteImport = 0;
+    window.baselineOnPeakImport = 0;
+    window.baselineOffPeakImport = 0;
     
     // Reset Baseline Period Totals (Gross)
     window.baselineSolarKwh = 0;
     window.baselineEveKwh = 0;
     window.baselineNiteKwh = 0;
+    window.baselineOnPeakKwh = 0;
+    window.baselineOffPeakKwh = 0;
     
     // Reset Simulated Period Totals (Gross)
     window.cycleSolarSimTotal = 0;
@@ -610,6 +682,17 @@ function calculateBillingCosts(rows) {
 
             let simulatedAddedKwh = addedKwh * currentScale;
             cycleSimKwh += simulatedAddedKwh;
+
+            const isTouPeak = isTouOnPeak(rDate);
+            if (isTouPeak) {
+                cycleOnPeakKwh += addedKwh;
+                cycleOnPeakSimKwh += simulatedAddedKwh;
+                window.baselineOnPeakKwh = (window.baselineOnPeakKwh || 0) + addedKwh;
+            } else {
+                cycleOffPeakKwh += addedKwh;
+                cycleOffPeakSimKwh += simulatedAddedKwh;
+                window.baselineOffPeakKwh = (window.baselineOffPeakKwh || 0) + addedKwh;
+            }
 
             // Tracking Simulated Totals for Period Breakdown UI (Gross)
             if (hour >= 7 && hour < 17) {
@@ -681,6 +764,9 @@ function calculateBillingCosts(rows) {
                 gridImportSim = deficit - dischargeAmt;
             }
             cycleSolarGridKwh += gridImportSim;
+            if (isTouPeak) cycleOnPeakGridKwh += gridImportSim;
+            else cycleOffPeakGridKwh += gridImportSim;
+
             if (isDay) cycleDayGridKwh = (cycleDayGridKwh || 0) + gridImportSim;
             else if (isEve) cycleEveGridKwh = (cycleEveGridKwh || 0) + gridImportSim;
             else cycleNiteGridKwh = (cycleNiteGridKwh || 0) + gridImportSim;
@@ -701,16 +787,18 @@ function calculateBillingCosts(rows) {
             window.baselineDayImport = (window.baselineDayImport || 0) + (isDay ? gridImportBase : 0);
             window.baselineEveImport = (window.baselineEveImport || 0) + (isEve ? gridImportBase : 0);
             window.baselineNiteImport = (window.baselineNiteImport || 0) + (isNite ? gridImportBase : 0);
+            if (isTouPeak) window.baselineOnPeakImport = (window.baselineOnPeakImport || 0) + gridImportBase;
+            else window.baselineOffPeakImport = (window.baselineOffPeakImport || 0) + gridImportBase;
         }
     }
 
-    let currentBill = calcMeaProgressive(cycleKwh);
+    let currentBill = (meterType === 'tou') ? calcMeaTou(cycleOnPeakKwh, cycleOffPeakKwh) : calcMeaProgressive(cycleKwh);
     // Use pro-rated service charge for marginal pricing estimation
     let cycleDaysElapsed = Math.max(1, Math.floor((today.getTime() - startCycle.getTime()) / (24*3600*1000)));
     let proRateFactor = Math.min(1, cycleDaysElapsed / daysInCycle);
     
     // blendedPricePerUnit is for estimating daily costs - exclude fixed service charge to keep it realistic
-    window.blendedPricePerUnit = cycleKwh > 0 ? (calcMeaEnergy(cycleKwh) / cycleKwh) : 4.4;
+    window.blendedPricePerUnit = cycleKwh > 0 ? ((meterType === 'tou' ? calcMeaTouEnergyOnly(cycleOnPeakKwh, cycleOffPeakKwh) : calcMeaEnergy(cycleKwh)) / cycleKwh) : 4.4;
 
     document.getElementById('billing-cycle-date').innerText = `Billing Cycle starting ${startCycle.toLocaleDateString('en-GB')}`;
     document.getElementById('current-bill').innerText = currentBill.toLocaleString('en-US', {maximumFractionDigits: 1});
@@ -731,7 +819,7 @@ function calculateBillingCosts(rows) {
     
     let cbBase = document.getElementById('cb-base');
     if (cbBase) {
-        let cbd = calcMeaBreakdown(cycleKwh);
+        let cbd = (meterType === 'tou') ? calcMeaTouBreakdown(cycleOnPeakKwh, cycleOffPeakKwh) : calcMeaBreakdown(cycleKwh);
         cbBase.textContent = cbd.base.toLocaleString('en-US', {maximumFractionDigits: 0});
         document.getElementById('cb-svc-ft').textContent = (cbd.service + cbd.ft).toLocaleString('en-US', {maximumFractionDigits: 0});
         document.getElementById('cb-vat').textContent = cbd.vat.toLocaleString('en-US', {maximumFractionDigits: 0});
@@ -756,9 +844,15 @@ function calculateBillingCosts(rows) {
         // Estimate uses SIMULATED GRID IMPORT (Net)
         let estFullMonthKwhActual = (cycleSimKwh / exactDaysElapsed) * daysInCycle; // Total needed
         let estFullMonthKwhImport = (cycleSolarGridKwh / exactDaysElapsed) * daysInCycle; // Actually paid to grid
+
+        let estFullMonthOnPeakGross = (cycleOnPeakSimKwh / exactDaysElapsed) * daysInCycle;
+        let estFullMonthOffPeakGross = (cycleOffPeakSimKwh / exactDaysElapsed) * daysInCycle;
         
-        let estFullMonthBillBase = calcMeaProgressive(estFullMonthKwhActual);
-        let estFullMonthBillNet = calcMeaProgressive(estFullMonthKwhImport);
+        let estFullMonthOnPeakImport = (cycleOnPeakGridKwh / exactDaysElapsed) * daysInCycle;
+        let estFullMonthOffPeakImport = (cycleOffPeakGridKwh / exactDaysElapsed) * daysInCycle;
+        
+        let estFullMonthBillBase = (meterType === 'tou') ? calcMeaTou(estFullMonthOnPeakGross, estFullMonthOffPeakGross) : calcMeaProgressive(estFullMonthKwhActual);
+        let estFullMonthBillNet = (meterType === 'tou') ? calcMeaTou(estFullMonthOnPeakImport, estFullMonthOffPeakImport) : calcMeaProgressive(estFullMonthKwhImport);
         
         // UI REVERT: Show Gross Bill in center
         let ebEl = document.getElementById('est-bill');
@@ -828,18 +922,28 @@ function calculateBillingCosts(rows) {
 
             // Compare Simulated Gross vs Original Baseline Gross (actual raw data)
             const estBaselineGrossKwh = (cycleKwh / exactDaysElapsed) * daysInCycle;
-            const baselineGrossBill = calcMeaProgressive(estBaselineGrossKwh);
+            
+            const estBaselineOnPeakGross = (cycleOnPeakKwh / exactDaysElapsed) * daysInCycle;
+            const estBaselineOffPeakGross = (cycleOffPeakKwh / exactDaysElapsed) * daysInCycle;
+            
+            const baselineGrossBill = (meterType === 'tou') ? calcMeaTou(estBaselineOnPeakGross, estBaselineOffPeakGross) : calcMeaProgressive(estBaselineGrossKwh);
             updateHeaderDelta('est-bill-delta', estFullMonthBillBase, baselineGrossBill);
             
             // Compare Simulated Net vs Baseline Net (0% adjustment)
+            const estBaselineOnPeakNet = (window.baselineOnPeakImport / exactDaysElapsed) * daysInCycle;
+            const estBaselineOffPeakNet = (window.baselineOffPeakImport / exactDaysElapsed) * daysInCycle;
             const estBaselineNetKwh = (window.baselineSolarGridKwh / exactDaysElapsed) * daysInCycle;
-            const baselineNetBill = calcMeaProgressive(estBaselineNetKwh);
+            
+            const baselineNetBill = (meterType === 'tou') ? calcMeaTou(estBaselineOnPeakNet, estBaselineOffPeakNet) : calcMeaProgressive(estBaselineNetKwh);
             updateHeaderDelta('solar-bill-delta', estFullMonthBillNet, baselineNetBill);
         }
 
         let bdBase = document.getElementById('bd-base-total');
         if (bdBase) {
-            let breakdown = calcMeaBreakdown(estFullMonthKwhActual);
+            const estFullMonthOnPeakSim = (cycleOnPeakSimKwh / exactDaysElapsed) * daysInCycle;
+            const estFullMonthOffPeakSim = (cycleOffPeakSimKwh / exactDaysElapsed) * daysInCycle;
+            
+            let breakdown = (meterType === 'tou') ? calcMeaTouBreakdown(estFullMonthOnPeakSim, estFullMonthOffPeakSim) : calcMeaBreakdown(estFullMonthKwhActual);
             bdBase.innerText = breakdown.base.toLocaleString('en-US', {maximumFractionDigits: 0});
             document.getElementById('bd-svc-ft-total').innerText = (breakdown.service + breakdown.ft).toLocaleString('en-US', {maximumFractionDigits: 0});
             document.getElementById('bd-vat-total').innerText = breakdown.vat.toLocaleString('en-US', {maximumFractionDigits: 0});
@@ -972,6 +1076,7 @@ function renderChart(rows) {
     const timeRange = document.getElementById('timeRangeFilter') ? document.getElementById('timeRangeFilter').value : 'today_yesterday';
     const freq = document.getElementById('freqFilter') ? document.getElementById('freqFilter').value : '15m';
     const metricType = document.getElementById('metricFilter') ? document.getElementById('metricFilter').value : 'power';
+    const meterType = document.getElementById('meterTypeFilter')?.value || 'normal';
     
     const today = new Date();
     today.setHours(0,0,0,0);
@@ -1077,6 +1182,8 @@ function renderChart(rows) {
     let rowMarginalRate = new Array(rows.length).fill(0);
     
     let accKwhCycle = 0;
+    let accOnPeakCycle = 0;
+    let accOffPeakCycle = 0;
     let currCycleMs = -1;
     
     // Process AC Data into a map for quick lookup
@@ -1100,12 +1207,26 @@ function renderChart(rows) {
             accKwhCycle = 0;
         }
         
-        let costBefore = calcMeaEnergy(accKwhCycle);
-        accKwhCycle += addedKwh;
-        let costAfter = calcMeaEnergy(accKwhCycle);
+        let mCost = 0;
+        let mRate = 0;
+
+        if (meterType === 'tou') {
+            const isPeak = isTouOnPeak(rDate);
+            const rate = isPeak ? MEA_TOU_ON_PEAK : MEA_TOU_OFF_PEAK;
+            mCost = (addedKwh * rate + addedKwh * MEA_FT) * MEA_VAT;
+            mRate = (rate + MEA_FT) * MEA_VAT;
+            
+            if (isPeak) accOnPeakCycle += addedKwh;
+            else accOffPeakCycle += addedKwh;
+        } else {
+            let costBefore = calcMeaEnergy(accKwhCycle);
+            accKwhCycle += addedKwh;
+            let costAfter = calcMeaEnergy(accKwhCycle);
+            
+            mCost = costAfter - costBefore;
+            mRate = addedKwh > 0 ? (mCost / addedKwh) : (calcMeaEnergy(accKwhCycle + 1) - calcMeaEnergy(accKwhCycle));
+        }
         
-        let mCost = costAfter - costBefore;
-        let mRate = addedKwh > 0 ? (mCost / addedKwh) : (calcMeaEnergy(accKwhCycle + 1) - calcMeaEnergy(accKwhCycle));
         rowMarginalCost[idx] = mCost;
         rowMarginalRate[idx] = mRate;
 

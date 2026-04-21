@@ -290,12 +290,16 @@
 
                 <!-- Solar & Battery Configuration (Post-aligned) -->
                 <div style="padding: 0 16px; margin-bottom: 20px; border-bottom: 1px dashed rgba(255,255,255,0.05); padding-bottom: 12px;">
-                    <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 10px;">
+                    <div style="display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px;">
                         <span class="material-symbols-rounded" style="font-size: 1.1rem; color: #94a3b8;">settings</span>
-                        <select id="solarSizeFilter" class="card-title-select" style="font-size: 0.9rem;">
+                        <select id="solarSizeFilter" class="card-title-select" style="font-size: 0.85rem; padding: 2px 4px;">
                             <option value="3">Solar (3kW)</option>
                             <option value="5" selected>Solar (5kW)</option>
                             <option value="10">Solar (10kW)</option>
+                        </select>
+                        <select id="meterTypeFilter" class="card-title-select" style="font-size: 0.85rem; padding: 2px 4px;">
+                            <option value="normal" selected>Meter: Normal</option>
+                            <option value="tou">Meter: TOU</option>
                         </select>
                     </div>
                     
