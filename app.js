@@ -102,12 +102,21 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (freqFilter) {
         freqFilter.addEventListener('change', () => {
-            if (freqFilter.value === '1d' && timeRangeFilter.value !== 'this_month') {
-                timeRangeFilter.value = 'this_month';
-                // Trigger change event to hide custom date container and re-render
-                timeRangeFilter.dispatchEvent(new Event('change'));
-            } else {
+            if (freqFilter.value === '1m') {
+                if (timeRangeFilter) timeRangeFilter.style.display = 'none';
+                if (customDateContainer) customDateContainer.style.display = 'none';
                 if (window.globalRawRows) renderChart(window.globalRawRows);
+            } else {
+                if (timeRangeFilter) {
+                    timeRangeFilter.style.display = '';
+                    if (freqFilter.value === '1d' && timeRangeFilter.value !== 'this_month') {
+                        timeRangeFilter.value = 'this_month';
+                    }
+                    // Trigger change event to show/hide custom date container and re-render
+                    timeRangeFilter.dispatchEvent(new Event('change'));
+                } else {
+                    if (window.globalRawRows) renderChart(window.globalRawRows);
+                }
             }
         });
     }
@@ -1257,118 +1266,235 @@ function renderChart(rows) {
         rowBatteryState[idx] = globalBatteryState;
     });
 
-    rows.forEach((r, idx) => {
-        let rDate = parseRowDate(r[0]);
-        let rTime = rDate.getTime();
-        
-        let metricVal = 0;
-        let battVal = 0;
-        let stateKwh = rowBatteryState[idx];
-        let mCost = rowMarginalCost[idx];
-        let mRate = rowMarginalRate[idx];
-
-        if (metricType === 'power') {
-            metricVal = parseNumber(r[4]);
-            battVal = stateKwh * 1000;
-        } else {
-            metricVal = mCost;
-            battVal = stateKwh * mRate;
-        }
-        
-        if (rTime >= rangeStart.getTime() && rTime < rangeStart.getTime() + durationMs) {
-            let bucketIdx = Math.floor((rTime - rangeStart.getTime()) / bucketMs);
-            if (bucketIdx >= 0 && bucketIdx < bucketCount) {
-                baseData[bucketIdx].push(metricVal);
-                batteryDataBucket[bucketIdx].push(battVal);
-                powerColorDataBucket[bucketIdx].push(parseNumber(r[4]));
-            }
-        }
-
-        let mappedTime = rTime + offsetCompareMs;
-        if (mappedTime >= rangeStart.getTime() && mappedTime < rangeStart.getTime() + durationMs) {
-            let bucketIdx = Math.floor((mappedTime - rangeStart.getTime()) / bucketMs);
-            if (bucketIdx >= 0 && bucketIdx < bucketCount) {
-                compareData[bucketIdx].push(metricVal);
-                compareColorDataBucket[bucketIdx].push(parseNumber(r[4]));
-            }
-        }
-    });
-
     let finalBase;
     let finalCompare;
     let finalBattery;
-    
-    if (metricType === 'power') {
-        finalBase = baseData.map(arr => arr.length > 0 ? arr.reduce((a,b)=>a+b,0)/arr.length : null);
-        finalCompare = compareData.map(arr => arr.length > 0 ? arr.reduce((a,b)=>a+b,0)/arr.length : null);
-        finalBattery = batteryDataBucket.map(arr => arr.length > 0 ? arr.reduce((a,b)=>a+b,0)/arr.length : null);
-    } else {
-        finalBase = baseData.map(arr => arr.length > 0 ? arr.reduce((a,b)=>a+b,0) : null);
-        finalCompare = compareData.map(arr => arr.length > 0 ? arr.reduce((a,b)=>a+b,0) : null);
-        finalBattery = batteryDataBucket.map(arr => arr.length > 0 ? arr.reduce((a,b)=>a+b,0) : null);
-    }
-
-    let baseWatts = powerColorDataBucket.map(arr => arr.length > 0 ? arr.reduce((a,b)=>a+b,0)/arr.length : 0);
-    let compareWatts = compareColorDataBucket.map(arr => arr.length > 0 ? arr.reduce((a,b)=>a+b,0)/arr.length : 0);
-
+    let baseWatts = [];
+    let compareWatts = [];
     let solarData = [];
-    for (let i = 0; i < bucketCount; i++) {
-        let bTime = new Date(rangeStart.getTime() + i * bucketMs);
-        let val = 0;
-        
-        if (metricType === 'power') {
-            if (freq === '1d') {
-                let avgSysEff = getSolarSystemEff(32); // ค่าเฉลี่ยอุณหภูมิกลางวันไทย
-                val = solarPanelKw * 1000 * avgSysEff * (10 / 24) * 0.636;
-            } else {
-                let rad = getWeatherInterpolated(bTime, window.meteoMap);
-                let cloud = getWeatherInterpolated(bTime, window.meteoCloud);
-                if (cloud < 0) cloud = 0;
-
-                let tempTS = new Date(bTime).setMinutes(0,0,0);
-                let ambTemp = window.meteoTemp && window.meteoTemp[tempTS] !== undefined ? window.meteoTemp[tempTS] : 30;
-                
-                let cloudFactor = 1 - (cloud * 0.007);
-                let sysEff = getSolarSystemEff(ambTemp);
-                let solarEff = rad >= 0 ? (rad / 1000) * cloudFactor : ((bTime.getHours() >= 7 && bTime.getHours() <= 17) ? Math.sin((bTime.getHours() - 7) * Math.PI / 10) : 0);
-                
-                val = solarPanelKw * 1000 * sysEff * solarEff;
-            }
-        } else {
-            let blendedRate = window.blendedPricePerUnit || 4.2;
-            let bucketHours = bucketMs / (3600 * 1000);
-            if (freq === '1d') {
-                let avgSysEff = getSolarSystemEff(32);
-                val = solarPanelKw * avgSysEff * (10 / 24) * 0.636 * 24 * blendedRate;
-            } else {
-                let rad = getWeatherInterpolated(bTime, window.meteoMap);
-                let cloud = getWeatherInterpolated(bTime, window.meteoCloud);
-                if (cloud < 0) cloud = 0;
-
-                let tempTS = new Date(bTime).setMinutes(0,0,0);
-                let ambTemp = window.meteoTemp && window.meteoTemp[tempTS] !== undefined ? window.meteoTemp[tempTS] : 30;
-                
-                let cloudFactor = 1 - (cloud * 0.007);
-                let sysEff = getSolarSystemEff(ambTemp);
-                let solarEff = rad >= 0 ? (rad / 1000) * cloudFactor : ((bTime.getHours() >= 7 && bTime.getHours() <= 17) ? Math.sin((bTime.getHours() - 7) * Math.PI / 10) : 0);
-                
-                val = (solarPanelKw * sysEff * solarEff) * bucketHours * blendedRate;
-            }
-        }
-        solarData.push(val);
-    }
-
-    // Prepare AC final data buckets
     let acFinalData = [];
-    for (let i = 0; i < bucketCount; i++) {
-        let bTime = new Date(rangeStart.getTime() + i * bucketMs);
-        let bucketKey = Math.floor(bTime.getTime() / bucketMs);
-        let vals = acLookup[bucketKey] || [];
-        if (vals.length > 0) {
-            let avg = vals.reduce((a, b) => a + b, 0) / vals.length;
-            acFinalData.push(metricType === 'cost' ? (avg * window.blendedPricePerUnit / 1000) : avg);
+
+    if (freq === '1m') {
+        let uniqueMonthsMap = new Map();
+        
+        let acLookup15m = {};
+        if (window.globalAcRows && window.globalAcRows.length > 0) {
+            window.globalAcRows.forEach(r => {
+                let d = new Date(r[0]);
+                let bucketKey = Math.floor(d.getTime() / (15 * 60000));
+                if (!acLookup15m[bucketKey]) acLookup15m[bucketKey] = [];
+                acLookup15m[bucketKey].push(parseNumber(r[1]));
+            });
+        }
+
+        rows.forEach((r, idx) => {
+            let rDate = parseRowDate(r[0]);
+            let year = rDate.getFullYear();
+            let month = rDate.getMonth();
+            let key = `${year}-${String(month + 1).padStart(2, '0')}`;
+            
+            if (!uniqueMonthsMap.has(key)) {
+                const THAI_MONTHS = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
+                uniqueMonthsMap.set(key, {
+                    label: `${THAI_MONTHS[month]} ${year}`,
+                    powerVals: [],
+                    addedKwhVals: [],
+                    costVals: [],
+                    solarPowerVals: [],
+                    solarKwhVals: [],
+                    solarCostVals: [],
+                    batteryPowerVals: [],
+                    batteryCostVals: [],
+                    acPowerVals: [],
+                    acKwhVals: [],
+                    acCostVals: [],
+                    rawPowerVals: []
+                });
+            }
+            
+            let mData = uniqueMonthsMap.get(key);
+            
+            let watt = parseNumber(r[4]);
+            let addedKwh = parseNumber(r[2]);
+            let cost = rowMarginalCost[idx];
+            let stateKwh = rowBatteryState[idx];
+            let mRate = rowMarginalRate[idx];
+            
+            let rad = getWeatherInterpolated(rDate, window.meteoMap);
+            let cloud = getWeatherInterpolated(rDate, window.meteoCloud);
+            if (cloud < 0) cloud = 0;
+            let tempTS = new Date(rDate).setMinutes(0, 0, 0);
+            let ambTemp = window.meteoTemp && window.meteoTemp[tempTS] !== undefined ? window.meteoTemp[tempTS] : 30;
+            let cloudFactor = 1 - (cloud * 0.007);
+            let sysEff = getSolarSystemEff(ambTemp);
+            let solarEff = rad >= 0 ? (rad / 1000) * cloudFactor : ((rDate.getHours() >= 7 && rDate.getHours() <= 17) ? Math.sin((rDate.getHours() - 7) * Math.PI / 10) : 0);
+            let solarProducedKwh = solarPanelKw * sysEff * solarEff * 0.25; 
+            
+            let solarW = solarProducedKwh * 4000;
+            let solarCost = solarProducedKwh * (window.blendedPricePerUnit || 4.2);
+            
+            let battWh = stateKwh * 1000;
+            let battCost = stateKwh * mRate;
+            
+            let key15m = Math.floor(rDate.getTime() / (15 * 60000));
+            let acVals = acLookup15m[key15m] || [];
+            let acW = acVals.length > 0 ? acVals.reduce((a,b)=>a+b,0)/acVals.length : null;
+            let acKwh = acW !== null ? (acW / 1000 * 0.25) : null;
+            let acCost = acW !== null ? (acW * (window.blendedPricePerUnit || 4.2) / 1000 * 0.25) : null;
+            
+            mData.powerVals.push(watt);
+            mData.addedKwhVals.push(addedKwh);
+            mData.costVals.push(cost);
+            mData.solarPowerVals.push(solarW);
+            mData.solarKwhVals.push(solarProducedKwh);
+            mData.solarCostVals.push(solarCost);
+            mData.batteryPowerVals.push(battWh);
+            mData.batteryCostVals.push(battCost);
+            if (acW !== null) mData.acPowerVals.push(acW);
+            if (acKwh !== null) mData.acKwhVals.push(acKwh);
+            if (acCost !== null) mData.acCostVals.push(acCost);
+            mData.rawPowerVals.push(watt);
+        });
+        
+        let sortedKeys = Array.from(uniqueMonthsMap.keys()).sort();
+        
+        labels = [];
+        finalBase = [];
+        finalCompare = [];
+        finalBattery = [];
+        acFinalData = [];
+        baseWatts = [];
+        compareWatts = [];
+        solarData = [];
+        bucketCount = sortedKeys.length;
+        
+        sortedKeys.forEach(key => {
+            let mData = uniqueMonthsMap.get(key);
+            labels.push(mData.label);
+            
+            if (metricType === 'power') {
+                finalBase.push(mData.addedKwhVals.length > 0 ? mData.addedKwhVals.reduce((a,b)=>a+b,0) : null);
+                solarData.push(mData.solarKwhVals.length > 0 ? mData.solarKwhVals.reduce((a,b)=>a+b,0) : null);
+                finalBattery.push(mData.batteryPowerVals.length > 0 ? mData.batteryPowerVals.reduce((a,b)=>a+b,0)/mData.batteryPowerVals.length : null);
+                acFinalData.push(mData.acKwhVals.length > 0 ? mData.acKwhVals.reduce((a,b)=>a+b,0) : null);
+            } else {
+                finalBase.push(mData.costVals.length > 0 ? mData.costVals.reduce((a,b)=>a+b,0) : null);
+                solarData.push(mData.solarCostVals.length > 0 ? mData.solarCostVals.reduce((a,b)=>a+b,0) : null);
+                finalBattery.push(mData.batteryCostVals.length > 0 ? mData.batteryCostVals.reduce((a,b)=>a+b,0) : null);
+                acFinalData.push(mData.acCostVals.length > 0 ? mData.acCostVals.reduce((a,b)=>a+b,0) : null);
+            }
+            baseWatts.push(mData.rawPowerVals.length > 0 ? mData.rawPowerVals.reduce((a,b)=>a+b,0)/mData.rawPowerVals.length : 0);
+            finalCompare.push(null);
+            compareWatts.push(0);
+        });
+    } else {
+        rows.forEach((r, idx) => {
+            let rDate = parseRowDate(r[0]);
+            let rTime = rDate.getTime();
+            
+            let metricVal = 0;
+            let battVal = 0;
+            let stateKwh = rowBatteryState[idx];
+            let mCost = rowMarginalCost[idx];
+            let mRate = rowMarginalRate[idx];
+
+            if (metricType === 'power') {
+                metricVal = parseNumber(r[4]);
+                battVal = stateKwh * 1000;
+            } else {
+                metricVal = mCost;
+                battVal = stateKwh * mRate;
+            }
+            
+            if (rTime >= rangeStart.getTime() && rTime < rangeStart.getTime() + durationMs) {
+                let bucketIdx = Math.floor((rTime - rangeStart.getTime()) / bucketMs);
+                if (bucketIdx >= 0 && bucketIdx < bucketCount) {
+                    baseData[bucketIdx].push(metricVal);
+                    batteryDataBucket[bucketIdx].push(battVal);
+                    powerColorDataBucket[bucketIdx].push(parseNumber(r[4]));
+                }
+            }
+
+            let mappedTime = rTime + offsetCompareMs;
+            if (mappedTime >= rangeStart.getTime() && mappedTime < rangeStart.getTime() + durationMs) {
+                let bucketIdx = Math.floor((mappedTime - rangeStart.getTime()) / bucketMs);
+                if (bucketIdx >= 0 && bucketIdx < bucketCount) {
+                    compareData[bucketIdx].push(metricVal);
+                    compareColorDataBucket[bucketIdx].push(parseNumber(r[4]));
+                }
+            }
+        });
+
+        if (metricType === 'power') {
+            finalBase = baseData.map(arr => arr.length > 0 ? arr.reduce((a,b)=>a+b,0)/arr.length : null);
+            finalCompare = compareData.map(arr => arr.length > 0 ? arr.reduce((a,b)=>a+b,0)/arr.length : null);
+            finalBattery = batteryDataBucket.map(arr => arr.length > 0 ? arr.reduce((a,b)=>a+b,0)/arr.length : null);
         } else {
-            acFinalData.push(null);
+            finalBase = baseData.map(arr => arr.length > 0 ? arr.reduce((a,b)=>a+b,0) : null);
+            finalCompare = compareData.map(arr => arr.length > 0 ? arr.reduce((a,b)=>a+b,0) : null);
+            finalBattery = batteryDataBucket.map(arr => arr.length > 0 ? arr.reduce((a,b)=>a+b,0) : null);
+        }
+
+        baseWatts = powerColorDataBucket.map(arr => arr.length > 0 ? arr.reduce((a,b)=>a+b,0)/arr.length : 0);
+        compareWatts = compareColorDataBucket.map(arr => arr.length > 0 ? arr.reduce((a,b)=>a+b,0)/arr.length : 0);
+
+        for (let i = 0; i < bucketCount; i++) {
+            let bTime = new Date(rangeStart.getTime() + i * bucketMs);
+            let val = 0;
+            
+            if (metricType === 'power') {
+                if (freq === '1d') {
+                    let avgSysEff = getSolarSystemEff(32); // ค่าเฉลี่ยอุณหภูมิกลางวันไทย
+                    val = solarPanelKw * 1000 * avgSysEff * (10 / 24) * 0.636;
+                } else {
+                    let rad = getWeatherInterpolated(bTime, window.meteoMap);
+                    let cloud = getWeatherInterpolated(bTime, window.meteoCloud);
+                    if (cloud < 0) cloud = 0;
+
+                    let tempTS = new Date(bTime).setMinutes(0,0,0);
+                    let ambTemp = window.meteoTemp && window.meteoTemp[tempTS] !== undefined ? window.meteoTemp[tempTS] : 30;
+                    
+                    let cloudFactor = 1 - (cloud * 0.007);
+                    let sysEff = getSolarSystemEff(ambTemp);
+                    let solarEff = rad >= 0 ? (rad / 1000) * cloudFactor : ((bTime.getHours() >= 7 && bTime.getHours() <= 17) ? Math.sin((bTime.getHours() - 7) * Math.PI / 10) : 0);
+                    
+                    val = solarPanelKw * 1000 * sysEff * solarEff;
+                }
+            } else {
+                let blendedRate = window.blendedPricePerUnit || 4.2;
+                let bucketHours = bucketMs / (3600 * 1000);
+                if (freq === '1d') {
+                    let avgSysEff = getSolarSystemEff(32);
+                    val = solarPanelKw * avgSysEff * (10 / 24) * 0.636 * 24 * blendedRate;
+                } else {
+                    let rad = getWeatherInterpolated(bTime, window.meteoMap);
+                    let cloud = getWeatherInterpolated(bTime, window.meteoCloud);
+                    if (cloud < 0) cloud = 0;
+
+                    let tempTS = new Date(bTime).setMinutes(0,0,0);
+                    let ambTemp = window.meteoTemp && window.meteoTemp[tempTS] !== undefined ? window.meteoTemp[tempTS] : 30;
+                    
+                    let cloudFactor = 1 - (cloud * 0.007);
+                    let sysEff = getSolarSystemEff(ambTemp);
+                    let solarEff = rad >= 0 ? (rad / 1000) * cloudFactor : ((bTime.getHours() >= 7 && bTime.getHours() <= 17) ? Math.sin((bTime.getHours() - 7) * Math.PI / 10) : 0);
+                    
+                    val = (solarPanelKw * sysEff * solarEff) * bucketHours * blendedRate;
+                }
+            }
+            solarData.push(val);
+        }
+
+        // Prepare AC final data buckets
+        for (let i = 0; i < bucketCount; i++) {
+            let bTime = new Date(rangeStart.getTime() + i * bucketMs);
+            let bucketKey = Math.floor(bTime.getTime() / bucketMs);
+            let vals = acLookup[bucketKey] || [];
+            if (vals.length > 0) {
+                let avg = vals.reduce((a, b) => a + b, 0) / vals.length;
+                acFinalData.push(metricType === 'cost' ? (avg * window.blendedPricePerUnit / 1000) : avg);
+            } else {
+                acFinalData.push(null);
+            }
         }
     }
 
@@ -1435,7 +1561,7 @@ function renderChart(rows) {
 
     chartDatasets.push({
         type: 'bar',
-        label: `${labelBase} ${metricType === 'cost' ? 'Cost (THB)' : 'Power (W)'}`,
+        label: `${labelBase} ${metricType === 'cost' ? 'Cost (THB)' : (freq === '1m' ? 'Energy (kWh)' : 'Power (W)')}`,
         data: finalBase,
         backgroundColor: context => {
             let watt = baseWatts[context.dataIndex];
@@ -1449,32 +1575,42 @@ function renderChart(rows) {
         categoryPercentage: 0.9,
     });
 
-    chartDatasets.push({
-        label: `${labelCompare} ${metricType === 'cost' ? 'Cost (THB)' : 'Power (W)'}`,
-        data: finalCompare,
-        borderColor: '#475569',
-        borderWidth: 2,
-        borderDash: [5, 5],
-        fill: false,
-        tension: 0.4,
-        pointRadius: 0,
-        pointHitRadius: 10
-    });
+    if (freq !== '1m') {
+        chartDatasets.push({
+            label: `${labelCompare} ${metricType === 'cost' ? 'Cost (THB)' : 'Power (W)'}`,
+            data: finalCompare,
+            borderColor: '#475569',
+            borderWidth: 2,
+            borderDash: [5, 5],
+            fill: false,
+            tension: 0.4,
+            pointRadius: 0,
+            pointHitRadius: 10
+        });
+    }
 
     // Add Budget/Limit Reference Line
     let budgetLimit = 0;
     if (metricType === 'cost') {
-        let dailyGoal = BUDGET_MONTHLY / 30;
-        if (freq === '1d') budgetLimit = dailyGoal;
-        else if (freq === '1h') budgetLimit = dailyGoal / 24;
-        else budgetLimit = dailyGoal / 96;
+        if (freq === '1m') {
+            budgetLimit = BUDGET_MONTHLY;
+        } else {
+            let dailyGoal = BUDGET_MONTHLY / 30;
+            if (freq === '1d') budgetLimit = dailyGoal;
+            else if (freq === '1h') budgetLimit = dailyGoal / 24;
+            else budgetLimit = dailyGoal / 96;
+        }
     } else {
-        budgetLimit = BUDGET_POWER_LIMIT;
+        if (freq === '1m') {
+            budgetLimit = BUDGET_MONTHLY / (window.blendedPricePerUnit || 4.4);
+        } else {
+            budgetLimit = BUDGET_POWER_LIMIT;
+        }
     }
 
     if (budgetLimit > 0) {
         chartDatasets.push({
-            label: `Ref Limit (${budgetLimit.toFixed(1)} ${metricType === 'cost' ? 'THB' : 'W'})`,
+            label: `Ref Limit (${budgetLimit.toFixed(1)} ${metricType === 'cost' ? 'THB' : (freq === '1m' ? 'kWh' : 'W')})`,
             data: new Array(bucketCount).fill(budgetLimit),
             borderColor: 'rgba(248, 113, 113, 0.8)', // Modern Red
             borderWidth: 1.5,
@@ -1511,7 +1647,7 @@ function renderChart(rows) {
                             let label = context.dataset.label || '';
                             if (label) label += ': ';
                             if (context.parsed.y !== null) {
-                                let unit = metricType === 'cost' ? ' THB' : ' W';
+                                let unit = metricType === 'cost' ? ' THB' : (freq === '1m' ? ' kWh' : ' W');
                                 label += context.parsed.y.toFixed(metricType === 'cost' ? 2 : 1) + unit;
                             }
                             return label;
@@ -1526,7 +1662,7 @@ function renderChart(rows) {
                     ticks: { color: '#94a3b8' }, 
                     beginAtZero: true,
                     min: 0,
-                    max: metricType === 'cost' ? (freq === '1d' ? 200 : CHART_MAX_COST) : CHART_MAX_WATT
+                    max: freq === '1m' ? undefined : (metricType === 'cost' ? (freq === '1d' ? 200 : CHART_MAX_COST) : CHART_MAX_WATT)
                 }
             }
         }
