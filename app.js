@@ -154,8 +154,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const meterFilter = document.getElementById('meterTypeFilter');
     if (meterFilter) {
-        const savedMeter = localStorage.getItem('meter_type');
-        if (savedMeter) meterFilter.value = savedMeter;
+        let savedMeter = localStorage.getItem('meter_type');
+        // Force 'normal' as default since user does not use TOU
+        if (!savedMeter || savedMeter === 'tou') {
+            savedMeter = 'normal';
+            localStorage.setItem('meter_type', 'normal');
+        }
+        meterFilter.value = savedMeter;
         meterFilter.addEventListener('change', updateBattery);
     }
     
@@ -201,11 +206,15 @@ document.addEventListener('DOMContentLoaded', () => {
     const themeIcon = document.getElementById('theme-icon');
     if (themeToggle) {
         themeToggle.addEventListener('click', () => {
-            document.body.classList.toggle('light-theme');
-            if (document.body.classList.contains('light-theme')) {
-                themeIcon.innerText = 'dark_mode';
-            } else {
+            document.body.classList.toggle('dark-theme');
+            if (document.body.classList.contains('dark-theme')) {
                 themeIcon.innerText = 'light_mode';
+            } else {
+                themeIcon.innerText = 'dark_mode';
+            }
+            // Re-render chart to apply new theme text & grid colors
+            if (window.globalRawRows) {
+                renderChart(window.globalRawRows);
             }
         });
     }
@@ -257,8 +266,8 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 });
 
-const GS_CSV_URL = "https://docs.google.com/spreadsheets/d/1JE-c7uCBsnEJFgG-pXQzjq7kVHDp9X1igY_7mhJro-Y/gviz/tq?tqx=out:csv&sheet=Log_15Min";
-const AC_CSV_URL = "https://docs.google.com/spreadsheets/d/1JE-c7uCBsnEJFgG-pXQzjq7kVHDp9X1igY_7mhJro-Y/gviz/tq?tqx=out:csv&sheet=Log_AC";
+const GS_CSV_URL = "https://docs.google.com/spreadsheets/d/1JE-c7uCBsnEJFgG-pXQzjq7kVHDp9X1igY_7mhJro-Y/gviz/tq?tqx=out:csv&sheet=Log_15Min&cachebuster=" + Date.now();
+const AC_CSV_URL = "https://docs.google.com/spreadsheets/d/1JE-c7uCBsnEJFgG-pXQzjq7kVHDp9X1igY_7mhJro-Y/gviz/tq?tqx=out:csv&sheet=Log_AC&cachebuster=" + Date.now();
 const GS_SHEET_URL = "https://docs.google.com/spreadsheets/d/1JE-c7uCBsnEJFgG-pXQzjq7kVHDp9X1igY_7mhJro-Y/edit";
 
 // Config from backend logic
@@ -534,6 +543,17 @@ function processData(rows) {
         const lastRow = rows[rows.length - 1];
         
         calculateRealtime(lastRow);
+        
+        // Compile and populate billing cycles dropdown dynamically
+        let uniqueMap = new Map();
+        for (let r of rows) {
+            if (!r[0]) continue;
+            let ts = parseRowDate(r[0]).getTime();
+            uniqueMap.set(ts, r);
+        }
+        let sortedRows = Array.from(uniqueMap.values()).sort((a,b) => parseRowDate(a[0]) - parseRowDate(b[0]));
+        populateBillingCyclesDropdown(sortedRows);
+        
         calculateBillingCosts(rows);
         calculateHistoricalAverages(rows); // New summary from all history
         renderChart(rows);
@@ -590,17 +610,29 @@ function calculateRealtime(lastRow) {
 
 function calculateBillingCosts(rows) {
     const today = new Date();
+    const dropdown = document.getElementById('billingCycleFilter');
     
-    let startCycle = new Date(today.getFullYear(), today.getMonth(), BILLING_DAY);
-    if (today.getDate() < BILLING_DAY) {
-        startCycle.setMonth(startCycle.getMonth() - 1); // Fixed typo: should be getMonth()
+    let startCycle;
+    let endOfCycle;
+    
+    if (dropdown && dropdown.value) {
+        let startMs = parseInt(dropdown.value);
+        startCycle = new Date(startMs);
+        endOfCycle = new Date(startCycle);
+        endOfCycle.setMonth(endOfCycle.getMonth() + 1);
+    } else {
+        startCycle = new Date(today.getFullYear(), today.getMonth(), BILLING_DAY);
+        if (today.getDate() < BILLING_DAY) {
+            startCycle.setMonth(startCycle.getMonth() - 1);
+        }
+        startCycle.setHours(0,0,0,0);
+        endOfCycle = new Date(startCycle);
+        endOfCycle.setMonth(endOfCycle.getMonth() + 1);
     }
-    startCycle.setHours(0,0,0,0);
 
-    // Calculate dynamic cycle length (days in current calendar month)
-    let endOfCycle = new Date(startCycle);
-    endOfCycle.setMonth(endOfCycle.getMonth() + 1);
+    // Calculate dynamic cycle length
     let daysInCycle = Math.round((endOfCycle.getTime() - startCycle.getTime()) / (24*3600*1000));
+    let isPastCycle = (endOfCycle < today);
 
     const meterType = document.getElementById('meterTypeFilter')?.value || 'normal';
 
@@ -677,7 +709,7 @@ function calculateBillingCosts(rows) {
 
     for (let r of sortedRows) {
         let rDate = parseRowDate(r[0]);
-        if (rDate >= startCycle) {
+        if (rDate >= startCycle && rDate < endOfCycle) {
             let addedKwh = parseNumber(r[2]);
             cycleKwh += addedKwh;
             cycleCount++;
@@ -803,7 +835,7 @@ function calculateBillingCosts(rows) {
 
     let currentBill = (meterType === 'tou') ? calcMeaTou(cycleOnPeakKwh, cycleOffPeakKwh) : calcMeaProgressive(cycleKwh);
     // Use pro-rated service charge for marginal pricing estimation
-    let cycleDaysElapsed = Math.max(1, Math.floor((today.getTime() - startCycle.getTime()) / (24*3600*1000)));
+    let cycleDaysElapsed = isPastCycle ? daysInCycle : Math.max(1, Math.floor((today.getTime() - startCycle.getTime()) / (24*3600*1000)));
     let proRateFactor = Math.min(1, cycleDaysElapsed / daysInCycle);
     
     // blendedPricePerUnit is for estimating daily costs - exclude fixed service charge to keep it realistic
@@ -847,8 +879,7 @@ function calculateBillingCosts(rows) {
 
     if (cycleCount > 0) {
         // Estimation Accuracy Fix: Use fractional days elapsed instead of row counts
-        let msElapsed = Math.max(1, today.getTime() - startCycle.getTime());
-        let exactDaysElapsed = msElapsed / (24*3600*1000);
+        let exactDaysElapsed = isPastCycle ? daysInCycle : (Math.max(1, today.getTime() - startCycle.getTime()) / (24*3600*1000));
         
         // Estimate uses SIMULATED GRID IMPORT (Net)
         let estFullMonthKwhActual = (cycleSimKwh / exactDaysElapsed) * daysInCycle; // Total needed
@@ -905,7 +936,7 @@ function calculateBillingCosts(rows) {
                 } else {
                     let sign = diff > 0 ? "+" : "";
                     el.textContent = `${sign}${diff.toFixed(1)} kWh`;
-                    el.style.color = diff > 0 ? "var(--glow-red)" : "#34d399";
+                    el.style.color = diff > 0 ? "var(--glow-red)" : "var(--glow-green)";
                     el.style.opacity = "1";
                 }
             };
@@ -925,7 +956,7 @@ function calculateBillingCosts(rows) {
                 } else {
                     let sign = diff > 0 ? "+" : "";
                     el.textContent = `(${sign}${Math.round(diff).toLocaleString()} ฿)`;
-                    el.style.color = diff > 0 ? "var(--glow-red)" : "#34d399";
+                    el.style.color = diff > 0 ? "var(--glow-red)" : "var(--glow-green)";
                 }
             };
 
@@ -1014,10 +1045,10 @@ function calculateBillingCosts(rows) {
         if (uiTodayInfo) {
             let dailyBenchmark = 100; 
             let isOver = estTodayFullCost > dailyBenchmark;
-            let estColor = isOver ? '#f87171' : '#34d399';
+            let estColor = isOver ? 'var(--glow-red)' : 'var(--glow-green)';
             let iconStr = isOver ? 'trending_up' : 'trending_down';
             
-            uiTodayInfo.innerHTML = `Today so far: <strong style="color:var(--text-main)">${todayCost.toLocaleString('en-US', {maximumFractionDigits:1})}</strong> THB <span style="opacity:0.5">|</span> <strong style="color: #38bdf8;">${todayKwh.toLocaleString('en-US', {maximumFractionDigits:1})}</strong> kWh<br>
+            uiTodayInfo.innerHTML = `Today so far: <strong style="color:var(--text-main)">${todayCost.toLocaleString('en-US', {maximumFractionDigits:1})}</strong> THB <span style="opacity:0.5">|</span> <strong style="color: var(--color-solar);">${todayKwh.toLocaleString('en-US', {maximumFractionDigits:1})}</strong> kWh<br>
                 <div style="display:flex; align-items:center; justify-content:space-between; margin-top:4px;">
                     <span style="font-size: 0.85rem; font-weight: 500; color: ${estColor};">
                         <span class="material-symbols-rounded" style="font-size: 1rem; vertical-align: middle; margin-right:2px;">${iconStr}</span>
@@ -1071,14 +1102,21 @@ function calculateHistoricalAverages(rows) {
     let avgEve = grandEve / uniqueDays;
     let avgNite = grandNite / uniqueDays;
     
-    const setAvg = (id, val) => {
+    const setAvg = (id, val, pctId, pctVal) => {
         let el = document.getElementById(id);
         if (el) el.textContent = val.toFixed(1) + ' kWh';
+        let pctEl = document.getElementById(pctId);
+        if (pctEl) pctEl.textContent = `(${pctVal}%)`;
     };
     
-    setAvg('hist-solar-avg', avgSolar);
-    setAvg('hist-eve-avg', avgEve);
-    setAvg('hist-nite-avg', avgNite);
+    let totalAvg = avgSolar + avgEve + avgNite;
+    let solarPct = totalAvg > 0 ? Math.round((avgSolar / totalAvg) * 100) : 0;
+    let evePct = totalAvg > 0 ? Math.round((avgEve / totalAvg) * 100) : 0;
+    let nitePct = totalAvg > 0 ? Math.round((avgNite / totalAvg) * 100) : 0;
+    
+    setAvg('hist-solar-avg', avgSolar, 'hist-solar-pct', solarPct);
+    setAvg('hist-eve-avg', avgEve, 'hist-eve-pct', evePct);
+    setAvg('hist-nite-avg', avgNite, 'hist-nite-pct', nitePct);
 }
 
 function renderChart(rows) {
@@ -1289,14 +1327,33 @@ function renderChart(rows) {
 
         rows.forEach((r, idx) => {
             let rDate = parseRowDate(r[0]);
-            let year = rDate.getFullYear();
-            let month = rDate.getMonth();
-            let key = `${year}-${String(month + 1).padStart(2, '0')}`;
+            
+            // Group by Billing Cycle (24th of previous month to 23rd of current month)
+            let cycleDate = new Date(rDate);
+            if (cycleDate.getDate() >= BILLING_DAY) {
+                // Dates on or after the 24th belong to the next billing cycle month
+                cycleDate.setMonth(cycleDate.getMonth() + 1);
+            }
+            let cYear = cycleDate.getFullYear();
+            let cMonth = cycleDate.getMonth();
+            let key = `${cYear}-${String(cMonth + 1).padStart(2, '0')}`;
             
             if (!uniqueMonthsMap.has(key)) {
                 const THAI_MONTHS = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
+                
+                // Get cycle start month/year BE
+                let sMonthIdx = cMonth - 1;
+                let sYear = cYear;
+                if (sMonthIdx < 0) {
+                    sMonthIdx = 11;
+                    sYear = cYear - 1;
+                }
+                let sBE = (sYear + 543) % 100;
+                let eBE = (cYear + 543) % 100;
+                let rangeLabel = `รอบ 24 ${THAI_MONTHS[sMonthIdx]} ${sBE} - 23 ${THAI_MONTHS[cMonth]} ${eBE}`;
+                
                 uniqueMonthsMap.set(key, {
-                    label: `${THAI_MONTHS[month]} ${year}`,
+                    label: rangeLabel,
                     powerVals: [],
                     addedKwhVals: [],
                     costVals: [],
@@ -1622,6 +1679,14 @@ function renderChart(rows) {
         });
     }
 
+    const isDark = document.body.classList.contains('dark-theme');
+    const chartLabelColor = isDark ? '#a39587' : '#7c7267';
+    const chartTextColor = isDark ? '#f5f1e9' : '#2b2520';
+    const chartTooltipBg = isDark ? 'rgba(30, 26, 22, 0.95)' : 'rgba(255, 255, 255, 0.95)';
+    const chartTooltipBorder = isDark ? 'rgba(255,255,255,0.1)' : 'rgba(139, 115, 85, 0.15)';
+    const gridColorX = isDark ? 'rgba(255, 255, 255, 0.03)' : 'rgba(139, 115, 85, 0.05)';
+    const gridColorY = isDark ? 'rgba(255, 255, 255, 0.06)' : 'rgba(139, 115, 85, 0.08)';
+
     currentChart = new Chart(ctx, {
         type: 'line',
         data: {
@@ -1633,12 +1698,12 @@ function renderChart(rows) {
             maintainAspectRatio: false,
             interaction: { mode: 'index', intersect: false },
             plugins: {
-                legend: { position: 'top', labels: { color: '#e2e8f0', usePointStyle: true, boxWidth: 8 } },
+                legend: { position: 'top', labels: { color: chartTextColor, usePointStyle: true, boxWidth: 8, font: { family: 'Inter', weight: '600' } } },
                 tooltip: {
-                    backgroundColor: 'rgba(15, 23, 42, 0.8)',
-                    titleColor: '#f8fafc',
-                    bodyColor: '#e2e8f0',
-                    borderColor: 'rgba(255,255,255,0.1)',
+                    backgroundColor: chartTooltipBg,
+                    titleColor: chartTextColor,
+                    bodyColor: chartTextColor,
+                    borderColor: chartTooltipBorder,
                     borderWidth: 1,
                     padding: 12,
                     displayColors: true,
@@ -1656,10 +1721,10 @@ function renderChart(rows) {
                 }
             },
             scales: {
-                x: { grid: { color: 'rgba(255, 255, 255, 0.03)' }, ticks: { color: '#94a3b8', maxTicksLimit: 12 } },
+                x: { grid: { color: gridColorX }, ticks: { color: chartLabelColor, maxTicksLimit: 12, font: { family: 'Inter', weight: '500' } } },
                 y: { 
-                    grid: { color: 'rgba(255, 255, 255, 0.06)' }, 
-                    ticks: { color: '#94a3b8' }, 
+                    grid: { color: gridColorY }, 
+                    ticks: { color: chartLabelColor, font: { family: 'Inter', weight: '500' } }, 
                     beginAtZero: true,
                     min: 0,
                     max: freq === '1m' ? undefined : (metricType === 'cost' ? (freq === '1d' ? 200 : CHART_MAX_COST) : CHART_MAX_WATT)
@@ -1685,13 +1750,13 @@ function renderChart(rows) {
         
         if (viewingDate < threeDaysAgo) {
             badgeIcon.textContent = '✅';
-            badgeText.innerHTML = `Solar: <strong style="color: #34d399;">ข้อมูลสภาพอากาศจริง</strong> (ERA5 Reanalysis)`;
+            badgeText.innerHTML = `Solar: <strong style="color: var(--glow-green);">ข้อมูลสภาพอากาศจริง</strong> (ERA5 Reanalysis)`;
         } else if (viewingDate > now) {
             badgeIcon.textContent = '🔮';
-            badgeText.innerHTML = `Solar: <strong style="color: #fbbf24;">พยากรณ์อากาศล่วงหน้า</strong> (รอบพยากรณ์ ${runStr})`;
+            badgeText.innerHTML = `Solar: <strong style="color: var(--glow-yellow);">พยากรณ์อากาศล่วงหน้า</strong> (รอบพยากรณ์ ${runStr})`;
         } else {
             badgeIcon.textContent = '🌤️';
-            badgeText.innerHTML = `Solar: <strong style="color: #38bdf8;">พยากรณ์วันนี้</strong> (รอบพยากรณ์ ${runStr})`;
+            badgeText.innerHTML = `Solar: <strong style="color: var(--color-solar);">พยากรณ์วันนี้</strong> (รอบพยากรณ์ ${runStr})`;
         }
     }
 }
@@ -1706,3 +1771,72 @@ document.querySelectorAll('.adj-slider').forEach(slider => {
         slider.blur();
     });
 });
+
+function populateBillingCyclesDropdown(sortedRows) {
+    const dropdown = document.getElementById('billingCycleFilter');
+    if (!dropdown) return;
+
+    // If already populated, don't rebuild unless the length changed
+    if (dropdown.options.length > 0) return;
+
+    const cyclesMap = new Map(); // startCycleMs -> { start: Date, end: Date, label: String }
+    const THAI_MONTHS = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
+
+    sortedRows.forEach(r => {
+        let rDate = parseRowDate(r[0]);
+        let startMs = getBillingCycleStartMs(rDate);
+        if (!cyclesMap.has(startMs)) {
+            let start = new Date(startMs);
+            
+            // Calculate cycle end (23rd of the next month)
+            let end = new Date(start);
+            end.setMonth(end.getMonth() + 1);
+            end.setDate(end.getDate() - 1);
+            end.setHours(23, 59, 59, 999);
+            
+            // Generate BE labels
+            let cMonth = end.getMonth();
+            let cYear = end.getFullYear();
+            let sMonthIdx = start.getMonth();
+            let sYear = start.getFullYear();
+            
+            let sBE = (sYear + 543) % 100;
+            let eBE = (cYear + 543) % 100;
+            
+            let label = `รอบ 24 ${THAI_MONTHS[sMonthIdx]} ${sBE} - 23 ${THAI_MONTHS[cMonth]} ${eBE}`;
+            cyclesMap.set(startMs, {
+                start: start,
+                end: end,
+                label: label
+            });
+        }
+    });
+
+    // Sort cycles chronologically descending (latest first)
+    const sortedCycles = Array.from(cyclesMap.entries()).sort((a, b) => b[0] - a[0]);
+
+    dropdown.innerHTML = '';
+    
+    // Determine what is the current cycle of today
+    let todayStartMs = getBillingCycleStartMs(new Date());
+    
+    sortedCycles.forEach(([startMs, info]) => {
+        const option = document.createElement('option');
+        option.value = startMs;
+        
+        let label = info.label;
+        if (startMs === todayStartMs) {
+            label += ' (รอบปัจจุบัน)';
+        }
+        option.textContent = label;
+        
+        if (startMs === todayStartMs) {
+            option.selected = true;
+        }
+        dropdown.appendChild(option);
+    });
+
+    dropdown.addEventListener('change', () => {
+        calculateBillingCosts(window.globalRawRows);
+    });
+}

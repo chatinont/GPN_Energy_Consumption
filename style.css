@@ -1,23 +1,61 @@
 :root {
-    --bg-dark: #0f172a;
-    --card-bg: rgba(30, 41, 59, 0.4);
-    --card-border: rgba(255, 255, 255, 0.05);
-    --text-main: #f8fafc;
-    --text-muted: #94a3b8;
-    --accent: #38bdf8;
-    --glow-green: #34d399;
-    --glow-yellow: #fbbf24;
-    --glow-red: #f87171;
+    --bg-dark: #fbf9f4; /* Off-white/cream */
+    --bg-gradient: radial-gradient(circle at top left, #faf8f5, #eae3d2); /* Beautiful warm sand gradient */
+    --card-bg: rgba(255, 255, 255, 0.82); /* Premium pure milk white */
+    --card-border: rgba(139, 115, 85, 0.12); /* Subtle warm bronze border */
+    --text-main: #2b2520; /* Deep espresso charcoal */
+    --text-muted: #7c7267; /* Soft warm taupe */
+    --accent: #b45309; /* Deep warm amber/gold */
+    --glow-green: #16a34a; /* Forest green */
+    --glow-yellow: #d97706; /* Warm ochre yellow */
+    --glow-red: #dc2626; /* Terracotta red */
+    
+    /* Category Colors - Light theme optimized */
+    --color-solar: #0284c7; /* Clear sky blue */
+    --color-solar-bg: rgba(2, 132, 199, 0.1);
+    --color-evening: #b91c1c; /* Prominent crimson */
+    --color-evening-bg: rgba(185, 28, 28, 0.1);
+    --color-night: #6d28d9; /* Deep violet */
+    --color-night-bg: rgba(109, 40, 217, 0.1);
+    
+    /* Panel backgrounds and borders */
+    --panel-bg: rgba(139, 115, 85, 0.05); /* Warm sand tinted panel */
+    --panel-border: rgba(139, 115, 85, 0.15);
+    
+    /* Gauge track and needle */
+    --gauge-bg: rgba(139, 115, 85, 0.15);
+    --needle-fill: #2b2520;
+    --needle-center: #fbf9f4;
 }
 
-body.light-theme {
-    --bg-dark: #f1f5f9;
-    --card-bg: rgba(255, 255, 255, 0.7);
-    --card-border: rgba(0, 0, 0, 0.1);
-    --text-main: #0f172a;
-    --text-muted: #64748b;
-    --glow-green: #059669;
-    background: radial-gradient(circle at top left, #f8fafc, #e2e8f0);
+body.dark-theme {
+    --bg-dark: #12100e; /* Deep obsidian chocolate */
+    --bg-gradient: radial-gradient(circle at top left, #231e1a, #12100e);
+    --card-bg: rgba(35, 30, 26, 0.65); /* Translucent dark cocoa card */
+    --card-border: rgba(255, 255, 255, 0.05);
+    --text-main: #f5f1e9; /* Soft cream text */
+    --text-muted: #a39587; /* Soft warm cocoa grey */
+    --accent: #fbbf24; /* Ochre gold */
+    --glow-green: #34d399; /* Bright mint green */
+    --glow-yellow: #f59e0b;
+    --glow-red: #f87171;
+    
+    /* Category Colors - Dark theme optimized */
+    --color-solar: #38bdf8;
+    --color-solar-bg: rgba(56, 189, 248, 0.1);
+    --color-evening: #fca5a5;
+    --color-evening-bg: rgba(252, 165, 165, 0.1);
+    --color-night: #a78bfa;
+    --color-night-bg: rgba(167, 139, 250, 0.1);
+    
+    /* Panel backgrounds and borders */
+    --panel-bg: rgba(0, 0, 0, 0.25);
+    --panel-border: rgba(255, 255, 255, 0.05);
+    
+    /* Gauge track and needle */
+    --gauge-bg: rgba(255, 255, 255, 0.1);
+    --needle-fill: #ffffff;
+    --needle-center: #1e293b;
 }
 
 * {
@@ -28,7 +66,7 @@ body.light-theme {
 }
 
 body {
-    background: radial-gradient(circle at top left, #1e293b, var(--bg-dark));
+    background: var(--bg-gradient);
     color: var(--text-main);
     min-height: 100vh;
 }
@@ -161,8 +199,8 @@ body {
 
 .metric-card:hover {
     transform: translateY(-8px);
-    background: rgba(30, 41, 59, 0.7);
-    border-color: rgba(255, 255, 255, 0.1);
+    box-shadow: 0 15px 35px rgba(0,0,0,0.12);
+    border-color: var(--accent);
 }
 
 .card-header {
@@ -252,7 +290,7 @@ body {
 }
 
 .chart-filters select, .chart-filters input[type="date"] {
-    background: rgba(15, 23, 42, 0.6);
+    background: rgba(255, 255, 255, 0.8);
     color: var(--text-main);
     border: 1px solid var(--card-border);
     padding: 8px 12px;
@@ -268,18 +306,18 @@ body {
     border-color: var(--accent);
 }
 
-body.light-theme .chart-filters select, body.light-theme .chart-filters input[type="date"] {
-    background: rgba(255,255,255,0.8);
+body.dark-theme .chart-filters select, body.dark-theme .chart-filters input[type="date"] {
+    background: rgba(15, 23, 42, 0.6);
     color: var(--text-main);
 }
 
 .chart-filters input[type="date"]::-webkit-calendar-picker-indicator {
-    filter: invert(1);
+    filter: none;
     cursor: pointer;
 }
 
-body.light-theme .chart-filters input[type="date"]::-webkit-calendar-picker-indicator {
-    filter: none;
+body.dark-theme .chart-filters input[type="date"]::-webkit-calendar-picker-indicator {
+    filter: invert(1);
 }
 
 .chart-container {
@@ -524,30 +562,58 @@ body.light-theme .chart-filters input[type="date"]::-webkit-calendar-picker-indi
     transform: scale(0.95);
 }
 
-/* Light Theme Overrides */
-.light-theme #chat-window {
-    background: rgba(255, 255, 255, 0.85);
-    border: 1px solid rgba(0, 0, 0, 0.1);
-    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+/* Warm Light Theme Default Chatbot Styles */
+#chat-window {
+    background: rgba(255, 255, 255, 0.85) !important;
+    border: 1px solid rgba(139, 115, 85, 0.15) !important;
+    box-shadow: 0 15px 35px rgba(0, 0, 0, 0.08) !important;
 }
 
-.light-theme .chat-header {
-    background: rgba(0, 0, 0, 0.03);
+.chat-header {
+    background: rgba(0, 0, 0, 0.03) !important;
+    border-bottom: 1px solid rgba(139, 115, 85, 0.08) !important;
 }
 
-.light-theme .header-info h3 {
-    color: #1e293b;
+.header-info h3 {
+    color: #2b2520 !important;
 }
 
-.light-theme .message.ai {
-    background: #f1f5f9;
-    color: #334155;
+.message.ai {
+    background: #f5f1e6 !important;
+    color: #2b2520 !important;
 }
 
-.light-theme #chat-input {
-    background: white;
-    border-color: rgba(0, 0, 0, 0.1);
-    color: #1e293b;
+#chat-input {
+    background: white !important;
+    border: 1px solid rgba(139, 115, 85, 0.2) !important;
+    color: #2b2520 !important;
+}
+
+/* Warm Dark Theme Chatbot Overrides */
+body.dark-theme #chat-window {
+    background: rgba(30, 41, 59, 0.75) !important;
+    border: 1px solid rgba(255, 255, 255, 0.1) !important;
+    box-shadow: 0 15px 35px rgba(0, 0, 0, 0.4) !important;
+}
+
+body.dark-theme .chat-header {
+    background: rgba(255, 255, 255, 0.05) !important;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05) !important;
+}
+
+body.dark-theme .header-info h3 {
+    color: #f8fafc !important;
+}
+
+body.dark-theme .message.ai {
+    background: rgba(255, 255, 255, 0.05) !important;
+    color: #f1f5f9 !important;
+}
+
+body.dark-theme #chat-input {
+    background: rgba(255, 255, 255, 0.05) !important;
+    border: 1px solid rgba(255, 255, 255, 0.1) !important;
+    color: white !important;
 }
 
 /* Typing Indicator Animation */
