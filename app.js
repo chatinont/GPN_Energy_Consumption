@@ -219,6 +219,32 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    const infoToggle = document.getElementById('info-toggle');
+    const infoModal = document.getElementById('info-modal');
+    const closeInfo = document.getElementById('close-info');
+
+    if (infoToggle && infoModal && closeInfo) {
+        infoToggle.addEventListener('click', () => {
+            infoModal.classList.remove('hidden');
+        });
+
+        closeInfo.addEventListener('click', () => {
+            infoModal.classList.add('hidden');
+        });
+
+        infoModal.addEventListener('click', (e) => {
+            if (e.target === infoModal) {
+                infoModal.classList.add('hidden');
+            }
+        });
+
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && !infoModal.classList.contains('hidden')) {
+                infoModal.classList.add('hidden');
+            }
+        });
+    }
+
     // Export core metrics for Chatbot Context
     window.getDashboardContext = () => {
         return {
@@ -677,7 +703,7 @@ function calculateBillingCosts(rows) {
     const todayStr = new Date().toLocaleDateString('en-GB');
 
     // --- STEP 1: Deduplication & Sorting ---
-    // Tuya loggers can sometimes send duplicate rows. We use a Map to keep only the latest row per timestamp.
+    // Shelly loggers can sometimes send duplicate rows. We use a Map to keep only the latest row per timestamp.
     let uniqueMap = new Map();
     for (let r of rows) {
         if (!r[0]) continue;

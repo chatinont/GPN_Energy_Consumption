@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Tuya Energy Dashboard</title>
+    <title>Shelly Energy Dashboard</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@24,400,0,0" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
@@ -11,8 +11,8 @@
 <body>
     <div id="loader" class="loader-overlay">
         <div class="spinner"></div>
-        <p>Syncing Tuya Data...</p>
-    </div>
+        <p>Syncing Shelly Data...</p>
+    </div>Block of code removed
 
     <div class="dashboard-container">
         <header class="header">
@@ -27,6 +27,9 @@
             <div class="header-actions">
                 <button id="theme-toggle" class="icon-btn" title="Toggle Theme">
                     <span class="material-symbols-rounded" id="theme-icon">dark_mode</span>
+                </button>
+                <button id="info-toggle" class="icon-btn" title="System Info & Notes">
+                    <span class="material-symbols-rounded">info</span>
                 </button>
                 <div class="status-badge" id="sync-status">
                     <span class="material-symbols-rounded">wifi</span>
@@ -434,6 +437,109 @@
                 <button id="send-btn">
                     <span class="material-symbols-rounded">send</span>
                 </button>
+        </div>
+    </div>
+
+    <!-- System Info Modal -->
+    <div id="info-modal" class="modal-overlay hidden">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div class="modal-header-title">
+                    <span class="material-symbols-rounded">menu_book</span>
+                    <h2>คู่มือและรายละเอียดการทำงานของระบบ</h2>
+                </div>
+                <button id="close-info" class="icon-btn" title="Close">
+                    <span class="material-symbols-rounded">close</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="info-section-grid">
+                    
+                    <div class="info-card">
+                        <div class="info-card-header">
+                            <span class="material-symbols-rounded font-icon-blue">analytics</span>
+                            <h3>ภาพรวมของระบบ (System Overview)</h3>
+                        </div>
+                        <p>แดชบอร์ดนี้ทำหน้าที่วิเคราะห์ จำลอง และคาดการณ์การใช้พลังงานไฟฟ้าของบ้าน โดยนำเข้าข้อมูลดิบจาก <strong>Google Sheets</strong> ซึ่งดึงข้อมูลมาประมวลผลจากอุปกรณ์วัดไฟอัจฉริยะ <strong>Shelly Smart Meter</strong> เพียงตัวเดียว (ผ่านแผ่นงาน <code>Log_15Min</code>) เพื่อวิเคราะห์พฤติกรรมการใช้ไฟ จำลองประสิทธิภาพโซลาร์เซลล์ และประเมินบิลค่าไฟล่วงหน้า</p>
+                    </div>
+
+                    <div class="info-card">
+                        <div class="info-card-header">
+                            <span class="material-symbols-rounded font-icon-orange">electric_meter</span>
+                            <h3>ระบบวัดไฟบ้านหลัก (Shelly Smart Meter)</h3>
+                        </div>
+                        <p>ข้อมูลการกินไฟหลักของบ้านถูกวัดโดยอุปกรณ์ <strong>Shelly Smart Meter</strong> และเก็บสถิติลงชีต <code>Log_15Min</code> ทุก ๆ 15 นาที ผ่านระบบอัตโนมัติภายนอก (เช่น Home Assistant หรือ Node-RED) โดยนำเข้าคอลัมน์สำคัญ ได้แก่:</p>
+                        <ul>
+                            <li><strong>วัน-เวลา:</strong> วันและเวลาที่เก็บตัวอย่างข้อมูล</li>
+                            <li><strong>หน่วยสะสม (Total kWh):</strong> หน่วยพลังงานไฟฟ้าสะสมทั้งหมด</li>
+                            <li><strong>กำลังไฟ (Watt):</strong> กำลังไฟฟ้าที่ใช้งาน ณ เวลานั้น</li>
+                            <li><strong>แรงดันไฟ (Volt) & กระแสไฟ (mA):</strong> แรงดันและกระแสไฟฟ้าขณะวัด</li>
+                        </ul>
+                    </div>
+
+                    <div class="info-card">
+                        <div class="info-card-header">
+                            <span class="material-symbols-rounded font-icon-teal">table_chart</span>
+                            <h3>โครงสร้างชีตข้อมูล (Google Sheet Structure)</h3>
+                        </div>
+                        <p>ระบบจะดึงข้อมูลผ่านตารางแผ่นงานหลักใน Google Sheets เพื่อประมวลผล:</p>
+                        <ul>
+                            <li><strong>Log_15Min:</strong> ข้อมูลดิบความละเอียดสูงทุก 15 นาที สำหรับวาดกราฟแสดงพฤติกรรมการใช้พลังงานและวิเคราะห์ไฟกระชาก</li>
+                            <li><strong>Log_Hourly:</strong> สรุปยอดหน่วยการใช้ไฟฟ้าสะสมรายชั่วโมง</li>
+                            <li><strong>Daily_Summary:</strong> สรุปหน่วยและประเมินยอดรวมรายวัน ณ เวลาเที่ยงคืนของทุกวัน</li>
+                        </ul>
+                    </div>
+
+                    <div class="info-card">
+                        <div class="info-card-header">
+                            <span class="material-symbols-rounded font-icon-yellow">solar_power</span>
+                            <h3>ระบบพยากรณ์และการคำนวณจำลองโซลาร์เซลล์</h3>
+                        </div>
+                        <p>ระบบสามารถคำนวณประเมินกำลังผลิตโซลาร์เซลล์แบบกึ่งเรียลไทม์ โดยมีกลไกดังนี้:</p>
+                        <ul>
+                            <li><strong>การพยากรณ์สภาพอากาศ:</strong> เชื่อมต่อกับ API ของ <strong>Open-Meteo</strong> เพื่อดึงข้อมูลรังสีดวงอาทิตย์ย้อนหลังและพยากรณ์ล่วงหน้า (Shortwave Radiation, Cloud Cover, Temperature) ตามพิกัดบ้านของคุณ (Latitude: <code>13.937456</code>, Longitude: <code>100.601234</code>)</li>
+                            <li><strong>ตัวหักลดประสิทธิภาพ (Derating Factors):</strong> คำนวณความสูญเสียในระบบแบบสมจริง ได้แก่ ประสิทธิภาพ Inverter (96%), คราบฝุ่นเกาะแผง (4% loss), การสูญเสียในสายไฟ (2% loss), Module Mismatch (2% loss) และความร้อนบนแผง (หักลดประสิทธิภาพลง -0.4% ต่อองศาเซลเซียส เมื่ออุณหภูมิผิวแผงเกินกว่า 25°C)</li>
+                            <li><strong>การชาร์จแบตเตอรี่ (Battery Simulation):</strong> จำลองระบบกักเก็บพลังงานโดยคำนวณประสิทธิภาพการแปลงไฟเข้า/ออก (Round-trip Efficiency 90%) และจำกัดความลึกคายประจุ (Depth of Discharge 80%) ของความจุแบตเตอรี่สะสม</li>
+                        </ul>
+                    </div>
+
+                    <div class="info-card">
+                        <div class="info-card-header">
+                            <span class="material-symbols-rounded font-icon-purple">calculate</span>
+                            <h3>สูตรคำนวณค่าไฟฟ้า (MEA Tariff Formulas)</h3>
+                        </div>
+                        <p>สูตรการคำนวณค่าไฟอ้างอิงจากประกาศอัตราค่าบริการไฟฟ้าประเภท 1.2 (บ้านอยู่อาศัย) ของการไฟฟ้านครหลวง (MEA) โดยมี 2 รูปแบบ:</p>
+                        <ul>
+                            <li><strong>อัตราปกติ (Progressive Rate):</strong> คำนวณแบบอัตราก้าวหน้า 3 ขั้น:
+                                <br>&bull; 150 หน่วยแรก &rarr; 3.2484 บาท/หน่วย
+                                <br>&bull; 250 หน่วยถัดไป &rarr; 4.2218 บาท/หน่วย
+                                <br>&bull; ส่วนที่เกิน 400 หน่วย &rarr; 4.4217 บาท/หน่วย
+                                <br>&bull; รวมค่าบริการรายเดือนคงที่ 38.22 บาท
+                            </li>
+                            <li><strong>อัตรา TOU (Time of Use Rate):</strong> คำนวณตามช่วงเวลา:
+                                <br>&bull; <strong>On-Peak</strong> (จันทร์-ศุกร์ 09:00 - 22:00 น.) &rarr; 5.7982 บาท/หน่วย
+                                <br>&bull; <strong>Off-Peak</strong> (จันทร์-ศุกร์ 22:00 - 09:00 น., เสาร์-อาทิตย์, วันหยุดราชการ) &rarr; 2.6369 บาท/หน่วย
+                                <br>&bull; รวมค่าบริการรายเดือนคงที่ 24.62 บาท
+                            </li>
+                            <li><strong>ค่า Ft และภาษี VAT:</strong> ทั้งสองรูปแบบจะนำจำนวนหน่วยรวมคูณด้วยค่า Ft (คงที่ที่ 0.1623 บาท/หน่วย) บวกรวมค่าไฟฐาน แล้วนำไปบวกภาษีมูลค่าเพิ่ม (VAT 7%) อีกครั้งหนึ่ง</li>
+                            <li><strong>รอบบิล (Billing Cycle):</strong> กำหนดวันเริ่มรอบบิลใหม่ทุกวันที่ 24 ของเดือน</li>
+                        </ul>
+                    </div>
+
+                    <div class="info-card">
+                        <div class="info-card-header">
+                            <span class="material-symbols-rounded font-icon-red">smart_toy</span>
+                            <h3>ผู้ช่วยวิเคราะห์พลังงานอัจฉริยะ (Energy AI)</h3>
+                        </div>
+                        <p><strong>Energy AI Chatbot</strong> ทำงานโดยใช้โมเดลภาษาขนาดใหญ่ (LLM) ผ่าน Gemini API โดยรับบริบท (Context) พฤติกรรมการใช้ไฟภายในบ้านของคุณโดยตรง ซึ่งรวมถึง:</p>
+                        <ul>
+                            <li>ข้อมูลค่าไฟปัจจุบัน ยอดประมาณการสิ้นเดือน กำลังไฟแบบเรียลไทม์</li>
+                            <li>ประวัติการใช้งานพลังงานรายวันย้อนหลัง 14 วันล่าสุด</li>
+                            <li>AI จะช่วยวิเคราะห์พฤติกรรมการเปิดแอร์ และแนะนำแผนการประหยัดพลังงานที่เหมาะสมกับบ้านคุณ</li>
+                        </ul>
+                    </div>
+
+                </div>
             </div>
         </div>
     </div>
