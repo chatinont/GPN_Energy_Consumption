@@ -1,27 +1,48 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Shelly Energy Dashboard</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
-    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@24,400,0,0" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@24,400,0,0"
+        rel="stylesheet">
     <link rel="stylesheet" href="style.css">
 </head>
+
 <body>
     <div id="loader" class="loader-overlay">
         <div class="spinner"></div>
         <p>Syncing Shelly Data...</p>
-    </div>Block of code removed
+    </div>
 
     <div class="dashboard-container">
         <header class="header">
             <div class="title-area">
                 <h1>Energy <span>Analytics</span></h1>
                 <p id="billing-cycle-date" style="display: none;">Billing Cycle: --</p>
-                <div style="display: flex; align-items: center; gap: 8px; margin-top: 6px;">
-                    <span style="font-size: 0.85rem; color: var(--text-muted); font-weight: 500;">รอบบิล:</span>
-                    <select id="billingCycleFilter" style="background: var(--card-bg); border: 1px solid var(--card-border); color: var(--text-main); border-radius: 6px; padding: 4px 10px; font-size: 0.82rem; font-family: 'Inter', sans-serif; cursor: pointer; outline: none; font-weight: 600; transition: border-color 0.2s; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);"></select>
+                <div style="display: flex; align-items: center; gap: 12px; margin-top: 6px; flex-wrap: wrap;">
+                    <div class="view-mode-toggle" style="display: flex; background: rgba(255,255,255,0.05); padding: 2px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.08);">
+                        <button type="button" id="modeBillingBtn" class="toggle-btn active" style="background: var(--card-bg); border: none; color: var(--text-main); padding: 4px 12px; border-radius: 6px; font-size: 0.78rem; font-weight: 600; cursor: pointer; transition: all 0.2s; outline: none; box-shadow: 0 1px 3px rgba(0,0,0,0.2);">รายรอบบิล</button>
+                        <button type="button" id="modeDailyBtn" class="toggle-btn" style="background: transparent; border: none; color: var(--text-muted); padding: 4px 12px; border-radius: 6px; font-size: 0.78rem; font-weight: 600; cursor: pointer; transition: all 0.2s; outline: none;">รายวัน</button>
+                    </div>
+                    
+                    <!-- Billing Cycle Selector -->
+                    <div id="billingCycleSelectorContainer" style="display: flex; align-items: center; gap: 8px;">
+                        <span style="font-size: 0.85rem; color: var(--text-muted); font-weight: 500;">รอบบิล:</span>
+                        <select id="billingCycleFilter"
+                            style="background: var(--card-bg); border: 1px solid var(--card-border); color: var(--text-main); border-radius: 6px; padding: 4px 10px; font-size: 0.82rem; font-family: 'Inter', sans-serif; cursor: pointer; outline: none; font-weight: 600; transition: border-color 0.2s; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);"></select>
+                    </div>
+
+                    <!-- Daily Date Selector -->
+                    <div id="dailyDateSelectorContainer" style="display: none; align-items: center; gap: 4px;">
+                        <span style="font-size: 0.85rem; color: var(--text-muted); font-weight: 500;">วันที่:</span>
+                        <button type="button" id="dashPrevDateBtn" style="background: var(--card-bg); border: 1px solid var(--card-border); color: var(--text-main); cursor: pointer; display: flex; padding: 4px; border-radius: 6px; transition: all 0.2s; align-items: center; justify-content: center; outline: none;" onmouseover="this.style.background='rgba(255,255,255,0.15)'" onmouseout="this.style.background='var(--card-bg)'"><span class="material-symbols-rounded" style="font-size: 1.1rem;">chevron_left</span></button>
+                        <span id="dashboardDayOfWeekLabel" style="font-size: 0.82rem; font-weight: 600; min-width: 55px; text-align: center; color: var(--text-main);"></span>
+                        <input type="date" id="dashboardDateInput" style="border: 1px solid var(--card-border); border-radius: 6px; background: var(--card-bg); color: var(--text-main); padding: 4px 8px; font-family: 'Inter', sans-serif; cursor: pointer; font-size: 0.82rem; font-weight: 600; outline: none; transition: border-color 0.2s;">
+                        <button type="button" id="dashNextDateBtn" style="background: var(--card-bg); border: 1px solid var(--card-border); color: var(--text-main); cursor: pointer; display: flex; padding: 4px; border-radius: 6px; transition: all 0.2s; align-items: center; justify-content: center; outline: none;" onmouseover="this.style.background='rgba(255,255,255,0.15)'" onmouseout="this.style.background='var(--card-bg)'"><span class="material-symbols-rounded" style="font-size: 1.1rem;">chevron_right</span></button>
+                    </div>
                 </div>
             </div>
             <div class="header-actions">
@@ -42,11 +63,15 @@
         </header>
 
         <section class="metrics-grid">
-            <div class="metric-card live-power" style="display: flex; flex-direction: column; align-items: center; text-align: center; padding-top: 25px; padding-bottom: 20px;">
-                <h3 style="font-size: 1.1rem; font-weight: 600; color: var(--text-main); margin: 0 0 15px 0;">Total Real Time Energy</h3>
-                
-                <div id="power-status-badge" style="background: rgba(251,191,36,0.15); color: var(--accent); padding: 4px 16px; border-radius: 20px; font-size: 0.85rem; font-weight: 600; display:flex; align-items:center; gap: 6px; margin-bottom: 25px;">
-                    <span class="material-symbols-rounded" style="font-size: 1.1rem;">bolt</span> <span id="power-status-text">Consuming</span>
+            <div class="metric-card live-power"
+                style="display: flex; flex-direction: column; align-items: center; text-align: center; padding-top: 25px; padding-bottom: 20px;">
+                <h3 style="font-size: 1.1rem; font-weight: 600; color: var(--text-main); margin: 0 0 15px 0;">Total Real
+                    Time Energy</h3>
+
+                <div id="power-status-badge"
+                    style="background: rgba(251,191,36,0.15); color: var(--accent); padding: 4px 16px; border-radius: 20px; font-size: 0.85rem; font-weight: 600; display:flex; align-items:center; gap: 6px; margin-bottom: 25px;">
+                    <span class="material-symbols-rounded" style="font-size: 1.1rem;">bolt</span> <span
+                        id="power-status-text">Consuming</span>
                 </div>
 
                 <div style="position: relative; width: 100%; max-width: 240px; margin: 0 auto;">
@@ -58,37 +83,47 @@
                                 <stop offset="100%" stop-color="var(--glow-red)" />
                             </linearGradient>
                         </defs>
-                        <path d="M 10 50 A 40 40 0 0 1 90 50" fill="none" stroke="var(--gauge-bg)" stroke-width="10" stroke-linecap="round"/>
-                        <path d="M 10 50 A 40 40 0 0 1 90 50" fill="none" stroke="url(#gauge-gradient)" stroke-width="10" stroke-linecap="round"/>
-                        
-                        <g id="gauge-needle" transform="rotate(-90 50 50)" style="transition: transform 0.8s cubic-bezier(0.34, 1.56, 0.64, 1); transform-origin: 50px 50px;">
+                        <path d="M 10 50 A 40 40 0 0 1 90 50" fill="none" stroke="var(--gauge-bg)" stroke-width="10"
+                            stroke-linecap="round" />
+                        <path d="M 10 50 A 40 40 0 0 1 90 50" fill="none" stroke="url(#gauge-gradient)"
+                            stroke-width="10" stroke-linecap="round" />
+
+                        <g id="gauge-needle" transform="rotate(-90 50 50)"
+                            style="transition: transform 0.8s cubic-bezier(0.34, 1.56, 0.64, 1); transform-origin: 50px 50px;">
                             <path d="M 48 50 L 50 16 L 52 50 Z" fill="var(--needle-fill)" />
                             <circle cx="50" cy="50" r="5" fill="var(--needle-fill)" />
                             <circle cx="50" cy="50" r="2" fill="var(--needle-center)" />
                         </g>
 
                         <!-- SVG Text to align 0 and 10 under the arc perfectly -->
-                        <text x="10" y="66" text-anchor="middle" font-family="sans-serif" font-size="7" font-weight="600" fill="var(--text-muted)">0</text>
-                        <text x="90" y="66" text-anchor="middle" font-family="sans-serif" font-size="7" font-weight="600" fill="var(--text-muted)">10</text>
+                        <text x="10" y="66" text-anchor="middle" font-family="sans-serif" font-size="7"
+                            font-weight="600" fill="var(--text-muted)">0</text>
+                        <text x="90" y="66" text-anchor="middle" font-family="sans-serif" font-size="7"
+                            font-weight="600" fill="var(--text-muted)">10</text>
                     </svg>
 
                     <!-- Flow text organically so it never overlaps SVG -->
                     <div style="text-align: center; margin-top: 5px;">
-                        <span class="material-symbols-rounded" style="font-size: 1.1rem; color: var(--text-muted); display: block; margin-bottom: -5px;">electric_bolt</span>
-                        <h2 style="font-size: 2.6rem; font-weight: 700; margin: 0; color: var(--text-main); line-height: 1;" id="live-watt-val">0.00</h2>
+                        <span class="material-symbols-rounded"
+                            style="font-size: 1.1rem; color: var(--text-muted); display: block; margin-bottom: -5px;">electric_bolt</span>
+                        <h2 style="font-size: 2.6rem; font-weight: 700; margin: 0; color: var(--text-main); line-height: 1;"
+                            id="live-watt-val">0.00</h2>
                         <span style="font-size: 0.9rem; color: var(--text-muted); font-weight: 500;">kW</span>
                     </div>
                 </div>
 
-                <div style="margin-top: 25px; background: var(--panel-bg); border-radius: 8px; padding: 10px; width: 100%; border: 1px solid var(--panel-border); text-align: left;">
-                    <p id="today-cost" style="font-size: 0.85rem; color: var(--text-main); margin: 0; line-height: 1.5; font-weight: 500;">Today: -- THB<br><span style="opacity: 0.7; font-size: 0.8rem;">Est. Full Day: -- THB</span></p>
+                <div
+                    style="margin-top: 25px; background: var(--panel-bg); border-radius: 8px; padding: 10px; width: 100%; border: 1px solid var(--panel-border); text-align: left;">
+                    <p id="today-cost"
+                        style="font-size: 0.85rem; color: var(--text-main); margin: 0; line-height: 1.5; font-weight: 500;">
+                        Today: -- THB<br><span style="opacity: 0.7; font-size: 0.8rem;">Est. Full Day: -- THB</span></p>
                 </div>
             </div>
 
             <div class="metric-card">
                 <div class="card-header">
                     <span class="material-symbols-rounded">account_balance_wallet</span>
-                    <h3>Current Bill So Far</h3>
+                    <h3 id="card-bill-title">Current Bill So Far</h3>
                 </div>
                 <div class="card-body">
                     <h2 id="current-bill">--</h2>
@@ -97,31 +132,39 @@
 
                 <!-- Billing Cycle Progress -->
                 <div style="padding: 0 16px; margin-bottom: 10px;">
-                    <div style="display: flex; justify-content: space-between; font-size: 0.75rem; color: var(--text-muted); margin-bottom: 4px;">
+                    <div
+                        style="display: flex; justify-content: space-between; font-size: 0.75rem; color: var(--text-muted); margin-bottom: 4px;">
                         <span id="cb-cycle-days">วันที่ -- / 30</span>
                         <span id="cb-cycle-pct">--%</span>
                     </div>
                     <div style="height: 4px; background: var(--gauge-bg); border-radius: 2px; overflow: hidden;">
-                        <div id="cb-progress-bar" style="height: 100%; width: 0%; background: linear-gradient(90deg, var(--color-solar), #818cf8); border-radius: 2px; transition: width 0.5s;"></div>
+                        <div id="cb-progress-bar"
+                            style="height: 100%; width: 0%; background: linear-gradient(90deg, var(--color-solar), #818cf8); border-radius: 2px; transition: width 0.5s;">
+                        </div>
                     </div>
-                    <div style="font-size: 0.65rem; color: var(--text-muted); opacity: 0.8; text-align: right; margin-top: 4px;">
+                    <div
+                        style="font-size: 0.65rem; color: var(--text-muted); opacity: 0.8; text-align: right; margin-top: 4px;">
                         * ตัดรอบบิลทุกวันที่ 24 ของเดือน
                     </div>
                 </div>
 
                 <!-- Usage Stats -->
-                <div style="padding: 0 16px; display: flex; flex-wrap: wrap; justify-content: space-between; font-size: 0.8rem; color: var(--text-muted); margin-bottom: 8px; gap: 4px;">
+                <div
+                    style="padding: 0 16px; display: flex; flex-wrap: wrap; justify-content: space-between; font-size: 0.8rem; color: var(--text-muted); margin-bottom: 8px; gap: 4px;">
                     <span>⚡ ใช้ไป <strong id="cb-kwh" style="color: var(--text-main);">--</strong> kWh</span>
-                    <span>เฉลี่ย <strong id="cb-avg-day" style="color: var(--text-main);">--</strong> kWh/วัน</span>
-                    <span>💰 เฉลี่ย <strong id="cb-avg-cost" style="color: var(--accent);">--</strong> ฿/วัน</span>
+                    <span id="cb-avg-day-container">เฉลี่ย <strong id="cb-avg-day" style="color: var(--text-main);">--</strong> kWh/วัน</span>
+                    <span id="cb-avg-cost-container">💰 เฉลี่ย <strong id="cb-avg-cost" style="color: var(--accent);">--</strong> ฿/วัน</span>
                 </div>
 
-                <div style="padding: 0 16px; display: flex; flex-direction: column; gap: 4px; font-size: 0.75rem; color: var(--text-muted); margin-bottom: 12px;">
-                    <div style="display: flex; justify-content: space-between; border-bottom: 1px solid var(--card-border); padding-bottom: 4px;">
+                <div
+                    style="padding: 0 16px; display: flex; flex-direction: column; gap: 4px; font-size: 0.75rem; color: var(--text-muted); margin-bottom: 12px;">
+                    <div
+                        style="display: flex; justify-content: space-between; border-bottom: 1px solid var(--card-border); padding-bottom: 4px;">
                         <span>☀️ Solar (07:00-17:00)</span>
                         <strong id="cb-solar-val" style="color: var(--color-solar);">-- kWh (0%)</strong>
                     </div>
-                    <div style="display: flex; justify-content: space-between; border-bottom: 1px solid var(--card-border); padding-bottom: 4px;">
+                    <div
+                        style="display: flex; justify-content: space-between; border-bottom: 1px solid var(--card-border); padding-bottom: 4px;">
                         <span>🌆 Evening (17:00-22:00)</span>
                         <strong id="cb-evening-val" style="color: var(--color-evening);">-- kWh (0%)</strong>
                     </div>
@@ -132,45 +175,61 @@
                 </div>
 
                 <!-- Historical Daily Average (Insight) -->
-                <div style="margin: 0 16px 12px; padding: 10px; background: var(--color-solar-bg); border-radius: 8px; border: 1px dashed var(--color-solar);">
-                    <div style="font-size: 0.7rem; color: var(--color-solar); font-weight: 600; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.05em;">
+                <div
+                    style="margin: 0 16px 12px; padding: 10px; background: var(--color-solar-bg); border-radius: 8px; border: 1px dashed var(--color-solar);">
+                    <div
+                        style="font-size: 0.7rem; color: var(--color-solar); font-weight: 600; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.05em;">
                         📊 Historical Daily Avg (All Time)
                     </div>
-                    <div style="display: flex; justify-content: space-between; font-size: 0.75rem; color: var(--text-muted);">
+                    <div
+                        style="display: flex; justify-content: space-between; font-size: 0.75rem; color: var(--text-muted);">
                         <div style="display: flex; flex-direction: column; align-items: center; gap: 2px;">
                             <span>Solar</span>
                             <strong id="hist-solar-avg" style="color: var(--text-main); font-size: 0.9rem;">--</strong>
-                            <small id="hist-solar-pct" style="color: var(--color-solar); font-weight: 600; font-size: 0.7rem;"></small>
+                            <small id="hist-solar-pct"
+                                style="color: var(--color-solar); font-weight: 600; font-size: 0.7rem;"></small>
                         </div>
                         <div style="border-left: 1px solid var(--card-border);"></div>
                         <div style="display: flex; flex-direction: column; align-items: center; gap: 2px;">
                             <span>Evening</span>
                             <strong id="hist-eve-avg" style="color: var(--text-main); font-size: 0.9rem;">--</strong>
-                            <small id="hist-eve-pct" style="color: var(--color-evening); font-weight: 600; font-size: 0.7rem;"></small>
+                            <small id="hist-eve-pct"
+                                style="color: var(--color-evening); font-weight: 600; font-size: 0.7rem;"></small>
                         </div>
                         <div style="border-left: 1px solid var(--card-border);"></div>
                         <div style="display: flex; flex-direction: column; align-items: center; gap: 2px;">
                             <span>Night</span>
                             <strong id="hist-nite-avg" style="color: var(--text-main); font-size: 0.9rem;">--</strong>
-                            <small id="hist-nite-pct" style="color: var(--color-night); font-weight: 600; font-size: 0.7rem;"></small>
+                            <small id="hist-nite-pct"
+                                style="color: var(--color-night); font-weight: 600; font-size: 0.7rem;"></small>
+                        </div>
+                        <div style="border-left: 1px solid var(--card-border);"></div>
+                        <div style="display: flex; flex-direction: column; align-items: center; gap: 2px;">
+                            <span style="font-weight: 600; color: var(--text-main);">Total</span>
+                            <strong id="hist-total-avg" style="color: var(--text-main); font-size: 0.9rem; font-weight: 700;">--</strong>
+                            <small style="color: var(--text-muted); font-size: 0.7rem;">(100%)</small>
                         </div>
                     </div>
                 </div>
 
                 <!-- Mini Breakdown -->
                 <div style="padding: 0 16px 12px; font-size: 0.78rem;">
-                    <div style="background: var(--panel-bg); border-radius: 6px; padding: 8px 10px; display: flex; flex-direction: column; gap: 3px; border: 1px solid var(--panel-border);">
+                    <div
+                        style="background: var(--panel-bg); border-radius: 6px; padding: 8px 10px; display: flex; flex-direction: column; gap: 3px; border: 1px solid var(--panel-border);">
                         <div style="display: flex; justify-content: space-between; color: var(--text-muted);">
                             <span>ค่าพลังงานไฟฟ้า</span>
-                            <span><strong id="cb-base" style="color: var(--text-main); font-family: monospace;">--</strong> บาท</span>
+                            <span><strong id="cb-base"
+                                    style="color: var(--text-main); font-family: monospace;">--</strong> บาท</span>
                         </div>
                         <div style="display: flex; justify-content: space-between; color: var(--text-muted);">
                             <span>ค่าบริการ + Ft</span>
-                            <span><strong id="cb-svc-ft" style="color: var(--text-main); font-family: monospace;">--</strong> บาท</span>
+                            <span><strong id="cb-svc-ft"
+                                    style="color: var(--text-main); font-family: monospace;">--</strong> บาท</span>
                         </div>
                         <div style="display: flex; justify-content: space-between; color: var(--text-muted);">
                             <span>VAT 7%</span>
-                            <span><strong id="cb-vat" style="color: var(--text-main); font-family: monospace;">--</strong> บาท</span>
+                            <span><strong id="cb-vat"
+                                    style="color: var(--text-main); font-family: monospace;">--</strong> บาท</span>
                         </div>
                     </div>
                 </div>
@@ -180,7 +239,7 @@
                 <div class="card-header" style="justify-content: space-between;">
                     <div style="display: flex; align-items: center; gap: 8px;">
                         <span class="material-symbols-rounded">show_chart</span>
-                        <h3>Estimated Final Bill</h3>
+                        <h3 id="card-est-title">Estimated Final Bill</h3>
                     </div>
                 </div>
                 <div class="card-body" style="align-items: center; padding-top: 10px;">
@@ -190,93 +249,120 @@
                         <span id="est-bill-delta" style="font-size: 0.9rem; font-weight: 600; margin-left: 4px;"></span>
                     </div>
                 </div>
-                
+
                 <!-- Budget Progress (Added for alignment) -->
                 <div style="padding: 0 16px; margin-bottom: 12px;">
-                    <div style="display: flex; justify-content: space-between; font-size: 0.75rem; color: var(--text-muted); margin-bottom: 4px;">
+                    <div
+                        style="display: flex; justify-content: space-between; font-size: 0.75rem; color: var(--text-muted); margin-bottom: 4px;">
                         <span>Budget Goal: ฿3,000</span>
                         <span id="est-budget-pct">--%</span>
                     </div>
                     <div style="height: 6px; background: var(--gauge-bg); border-radius: 3px; overflow: hidden;">
-                        <div id="est-budget-bar" style="width: 0%; height: 100%; background: linear-gradient(90deg, var(--color-solar), #818cf8); transition: width 0.5s;"></div>
+                        <div id="est-budget-bar"
+                            style="width: 0%; height: 100%; background: linear-gradient(90deg, var(--color-solar), #818cf8); transition: width 0.5s;">
+                        </div>
                     </div>
-                    <p id="budget-warning" style="display: none; color: var(--glow-red); font-size: 0.65rem; text-align: right; margin-top: 4px; font-weight: 500;">
-                        <span class="material-symbols-rounded" style="vertical-align: middle; font-size: 0.8rem;">warning</span> Over Budget!
+                    <p id="budget-warning"
+                        style="display: none; color: var(--glow-red); font-size: 0.65rem; text-align: right; margin-top: 4px; font-weight: 500;">
+                        <span class="material-symbols-rounded"
+                            style="vertical-align: middle; font-size: 0.8rem;">warning</span> Over Budget!
                     </p>
                 </div>
 
                 <!-- Estimated Stats (Added for alignment) -->
-                <div style="padding: 0 16px; display: flex; flex-wrap: wrap; justify-content: space-between; font-size: 0.8rem; color: var(--text-muted); margin-bottom: 8px; gap: 4px;">
+                <div
+                    style="padding: 0 16px; display: flex; flex-wrap: wrap; justify-content: space-between; font-size: 0.8rem; color: var(--text-muted); margin-bottom: 8px; gap: 4px;">
                     <span>⚡ Est. <strong id="est-kwh" style="color: var(--text-main);">--</strong> kWh</span>
-                    <span>เฉลี่ย <strong id="est-avg-day" style="color: var(--text-main);">--</strong> kWh/วัน</span>
-                    <span>💰 เฉลี่ย <strong id="est-avg-cost" style="color: var(--accent);">--</strong> ฿/วัน</span>
+                    <span id="est-avg-day-container">เฉลี่ย <strong id="est-avg-day" style="color: var(--text-main);">--</strong> kWh/วัน</span>
+                    <span id="est-avg-cost-container">💰 เฉลี่ย <strong id="est-avg-cost" style="color: var(--accent);">--</strong> ฿/วัน</span>
                 </div>
 
                 <!-- Projected Period Stats with Real-time Simulation Sliders -->
-                <div style="position: relative; padding: 0 16px; display: flex; flex-direction: column; gap: 10px; font-size: 0.75rem; color: var(--text-muted); margin-bottom: 12px;">
-                    <button id="reset-scenarios" class="icon-btn" title="Reset to Actual" style="position: absolute; top: -38px; right: 16px; width: 24px; height: 24px; border-radius: 6px; background: var(--panel-bg); border: 1px solid var(--panel-border); color: var(--text-main);">
+                <div
+                    style="position: relative; padding: 0 16px; display: flex; flex-direction: column; gap: 10px; font-size: 0.75rem; color: var(--text-muted); margin-bottom: 12px;">
+                    <button id="reset-scenarios" class="icon-btn" title="Reset to Actual"
+                        style="position: absolute; top: -38px; right: 16px; width: 24px; height: 24px; border-radius: 6px; background: var(--panel-bg); border: 1px solid var(--panel-border); color: var(--text-main);">
                         <span class="material-symbols-rounded" style="font-size: 1rem;">restart_alt</span>
                     </button>
                     <!-- Day Slider -->
                     <div>
-                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px;">
+                        <div
+                            style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px;">
                             <span>☀️ Solar (07:00-17:00)</span>
                             <div style="display: flex; align-items: center; gap: 6px;">
                                 <strong id="est-solar-val" style="color: var(--color-solar);">-- kWh (0%)</strong>
                                 <div style="display: flex; flex-direction: column; align-items: flex-end;">
-                                    <span id="day-adj-label" style="font-size: 0.65rem; color: var(--accent); background: var(--color-solar-bg); padding: 1px 4px; border-radius: 3px; font-weight: 600;">+0%</span>
-                                    <span id="day-adj-cost" style="font-size: 0.6rem; margin-top: 1px; font-weight: 600; color: var(--accent); opacity: 0.8;"></span>
+                                    <span id="day-adj-label"
+                                        style="font-size: 0.65rem; color: var(--accent); background: var(--color-solar-bg); padding: 1px 4px; border-radius: 3px; font-weight: 600;">+0%</span>
+                                    <span id="day-adj-cost"
+                                        style="font-size: 0.6rem; margin-top: 1px; font-weight: 600; color: var(--accent); opacity: 0.8;"></span>
                                 </div>
                             </div>
                         </div>
-                        <input type="range" id="day-adj-slider" class="adj-slider" min="-50" max="100" value="0" step="1" style="width: 100%; height: 4px; cursor: pointer; accent-color: var(--accent); opacity: 0.7;">
+                        <input type="range" id="day-adj-slider" class="adj-slider" min="-50" max="100" value="0"
+                            step="1"
+                            style="width: 100%; height: 4px; cursor: pointer; accent-color: var(--accent); opacity: 0.7;">
                     </div>
 
                     <!-- Evening Slider -->
                     <div>
-                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px;">
+                        <div
+                            style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px;">
                             <span>🌆 Evening (17:00-22:00)</span>
                             <div style="display: flex; align-items: center; gap: 6px;">
                                 <strong id="est-evening-val" style="color: var(--color-evening);">-- kWh (0%)</strong>
                                 <div style="display: flex; flex-direction: column; align-items: flex-end;">
-                                    <span id="evening-adj-label" style="font-size: 0.65rem; color: var(--color-evening); background: var(--color-evening-bg); padding: 1px 4px; border-radius: 3px; font-weight: 600;">+0%</span>
-                                    <span id="evening-adj-cost" style="font-size: 0.6rem; margin-top: 1px; font-weight: 600; color: var(--color-evening); opacity: 0.8;"></span>
+                                    <span id="evening-adj-label"
+                                        style="font-size: 0.65rem; color: var(--color-evening); background: var(--color-evening-bg); padding: 1px 4px; border-radius: 3px; font-weight: 600;">+0%</span>
+                                    <span id="evening-adj-cost"
+                                        style="font-size: 0.6rem; margin-top: 1px; font-weight: 600; color: var(--color-evening); opacity: 0.8;"></span>
                                 </div>
                             </div>
                         </div>
-                        <input type="range" id="evening-adj-slider" class="adj-slider" min="-50" max="100" value="0" step="1" style="width: 100%; height: 4px; cursor: pointer; accent-color: var(--color-evening); opacity: 0.7;">
+                        <input type="range" id="evening-adj-slider" class="adj-slider" min="-50" max="100" value="0"
+                            step="1"
+                            style="width: 100%; height: 4px; cursor: pointer; accent-color: var(--color-evening); opacity: 0.7;">
                     </div>
 
                     <!-- Night Slider -->
                     <div>
-                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px;">
+                        <div
+                            style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px;">
                             <span>🌙 Night (22:00-07:00)</span>
                             <div style="display: flex; align-items: center; gap: 6px;">
                                 <strong id="est-night-val" style="color: var(--color-night);">-- kWh (0%)</strong>
                                 <div style="display: flex; flex-direction: column; align-items: flex-end;">
-                                    <span id="night-adj-label" style="font-size: 0.65rem; color: var(--color-night); background: var(--color-night-bg); padding: 1px 4px; border-radius: 3px; font-weight: 600;">+0%</span>
-                                    <span id="night-adj-cost" style="font-size: 0.6rem; margin-top: 1px; font-weight: 600; color: var(--color-night); opacity: 0.8;"></span>
+                                    <span id="night-adj-label"
+                                        style="font-size: 0.65rem; color: var(--color-night); background: var(--color-night-bg); padding: 1px 4px; border-radius: 3px; font-weight: 600;">+0%</span>
+                                    <span id="night-adj-cost"
+                                        style="font-size: 0.6rem; margin-top: 1px; font-weight: 600; color: var(--color-night); opacity: 0.8;"></span>
                                 </div>
                             </div>
                         </div>
-                        <input type="range" id="night-adj-slider" class="adj-slider" min="-50" max="100" value="0" step="1" style="width: 100%; height: 4px; cursor: pointer; accent-color: var(--color-night); opacity: 0.7;">
+                        <input type="range" id="night-adj-slider" class="adj-slider" min="-50" max="100" value="0"
+                            step="1"
+                            style="width: 100%; height: 4px; cursor: pointer; accent-color: var(--color-night); opacity: 0.7;">
                     </div>
                 </div>
 
                 <!-- Mini Breakdown (Matched Style) -->
                 <div style="padding: 0 16px 12px; font-size: 0.78rem;">
-                    <div style="background: var(--panel-bg); border-radius: 6px; padding: 8px 10px; display: flex; flex-direction: column; gap: 3px; border: 1px solid var(--panel-border);">
+                    <div
+                        style="background: var(--panel-bg); border-radius: 6px; padding: 8px 10px; display: flex; flex-direction: column; gap: 3px; border: 1px solid var(--panel-border);">
                         <div style="display: flex; justify-content: space-between; color: var(--text-muted);">
                             <span>ค่าพลังงานไฟฟ้า</span>
-                            <span><strong id="bd-base-total" style="color: var(--text-main); font-family: monospace;">--</strong> บาท</span>
+                            <span><strong id="bd-base-total"
+                                    style="color: var(--text-main); font-family: monospace;">--</strong> บาท</span>
                         </div>
                         <div style="display: flex; justify-content: space-between; color: var(--text-muted);">
                             <span>ค่าบริการ + Ft</span>
-                            <span><strong id="bd-svc-ft-total" style="color: var(--text-main); font-family: monospace;">--</strong> บาท</span>
+                            <span><strong id="bd-svc-ft-total"
+                                    style="color: var(--text-main); font-family: monospace;">--</strong> บาท</span>
                         </div>
                         <div style="display: flex; justify-content: space-between; color: var(--text-muted);">
                             <span>VAT 7%</span>
-                            <span><strong id="bd-vat-total" style="color: var(--text-main); font-family: monospace;">--</strong> บาท</span>
+                            <span><strong id="bd-vat-total"
+                                    style="color: var(--text-main); font-family: monospace;">--</strong> บาท</span>
                         </div>
                     </div>
                 </div>
@@ -294,39 +380,47 @@
                     <div style="display: flex; align-items: baseline; gap: 6px;">
                         <h2 id="solar-est-bill" style="color: var(--glow-green); margin: 0;">--</h2>
                         <span class="unit">THB</span>
-                        <span id="solar-bill-delta" style="font-size: 0.9rem; font-weight: 600; margin-left: 4px;"></span>
+                        <span id="solar-bill-delta"
+                            style="font-size: 0.9rem; font-weight: 600; margin-left: 4px;"></span>
                     </div>
                 </div>
 
                 <!-- Solar & Battery Configuration (Post-aligned) -->
-                <div style="padding: 0 16px; margin-bottom: 20px; border-bottom: 1px dashed var(--card-border); padding-bottom: 12px;">
+                <div
+                    style="padding: 0 16px; margin-bottom: 20px; border-bottom: 1px dashed var(--card-border); padding-bottom: 12px;">
                     <div style="display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px;">
-                        <span class="material-symbols-rounded" style="font-size: 1.1rem; color: var(--text-muted);">settings</span>
-                        <select id="solarSizeFilter" class="card-title-select" style="font-size: 0.85rem; padding: 2px 4px;">
+                        <span class="material-symbols-rounded"
+                            style="font-size: 1.1rem; color: var(--text-muted);">settings</span>
+                        <select id="solarSizeFilter" class="card-title-select"
+                            style="font-size: 0.85rem; padding: 2px 4px;">
                             <option value="3">Solar (3kW)</option>
                             <option value="5" selected>Solar (5kW)</option>
                             <option value="10">Solar (10kW)</option>
                         </select>
-                        <select id="meterTypeFilter" class="card-title-select" style="font-size: 0.85rem; padding: 2px 4px;">
+                        <select id="meterTypeFilter" class="card-title-select"
+                            style="font-size: 0.85rem; padding: 2px 4px;">
                             <option value="normal" selected>Meter: Normal</option>
                             <option value="tou">Meter: TOU</option>
                         </select>
                     </div>
-                    
+
                     <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px; opacity: 0.9;">
                         <span style="font-size: 0.85rem; color: var(--text-muted);">Batt Cap:</span>
-                        <input type="number" id="batterySizeFilter" min="0" step="1" value="0" placeholder="0" style="background: var(--panel-bg); border: 1px solid var(--panel-border); color: var(--text-main); border-radius: 6px; padding: 2px 8px; width: 60px; font-size: 0.9rem; font-weight: 500; text-align: center; outline: none;">
+                        <input type="number" id="batterySizeFilter" min="0" step="1" value="0" placeholder="0"
+                            style="background: var(--panel-bg); border: 1px solid var(--panel-border); color: var(--text-main); border-radius: 6px; padding: 2px 8px; width: 60px; font-size: 0.9rem; font-weight: 500; text-align: center; outline: none;">
                         <span style="font-size: 0.8rem; color: var(--text-muted);">kWh</span>
                     </div>
-                    
-                    <div style="font-size: 0.75rem; opacity: 0.6; line-height: 1.5; color: var(--text-muted); display: flex; gap: 10px; margin-bottom: 12px;">
+
+                    <div
+                        style="font-size: 0.75rem; opacity: 0.6; line-height: 1.5; color: var(--text-muted); display: flex; gap: 10px; margin-bottom: 12px;">
                         <span>DoD: <strong style="color: var(--color-solar);">80%</strong></span>
                         <span>Eff: <strong style="color: var(--color-solar);">90%</strong></span>
                     </div>
 
                     <div style="display: flex; align-items: center; gap: 8px; opacity: 0.9;">
                         <span style="font-size: 0.85rem; color: var(--text-muted);">Investment:</span>
-                        <input type="number" id="solarInvestment" min="0" step="1000" value="0" placeholder="55000" style="background: var(--panel-bg); border: 1px solid var(--panel-border); color: var(--accent); border-radius: 6px; padding: 2px 8px; width: 100px; font-size: 0.9rem; font-weight: 600; text-align: center; outline: none; font-family: 'monospace';">
+                        <input type="number" id="solarInvestment" min="0" step="1000" value="0" placeholder="55000"
+                            style="background: var(--panel-bg); border: 1px solid var(--panel-border); color: var(--accent); border-radius: 6px; padding: 2px 8px; width: 100px; font-size: 0.9rem; font-weight: 600; text-align: center; outline: none; font-family: 'monospace';">
                         <span style="font-size: 0.8rem; color: var(--text-muted);">THB</span>
                     </div>
                 </div>
@@ -334,11 +428,11 @@
                 <!-- Solar Stats -->
                 <div style="padding: 0 16px; font-size: 0.8rem; color: var(--text-muted); margin-bottom: 8px;">
                     <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
-                        <span>☀️ ผลิตได้/เดือน</span>
+                        <span id="sol-daily-kwh-label">☀️ ผลิตได้/เดือน</span>
                         <strong id="sol-daily-kwh" style="color: var(--accent);">-- kWh</strong>
                     </div>
                     <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
-                        <span>💰 ประหยัด/เดือน</span>
+                        <span id="sol-daily-saving-label">💰 ประหยัด/เดือน</span>
                         <strong id="sol-daily-saving" style="color: var(--glow-green);">-- บาท</strong>
                     </div>
                     <div style="display: flex; justify-content: space-between;">
@@ -347,7 +441,8 @@
                     </div>
                 </div>
 
-                <div class="card-footer" style="margin-top: auto; padding: 12px 16px; border-top: 1px solid var(--card-border); display: flex; flex-direction: column; gap: 4px;">
+                <div class="card-footer"
+                    style="margin-top: auto; padding: 12px 16px; border-top: 1px solid var(--card-border); display: flex; flex-direction: column; gap: 4px;">
                     <div style="display: flex; justify-content: space-between; align-items: center;">
                         <span style="font-size: 0.85rem; color: var(--text-muted);">คืนทุนภายใน:</span>
                         <strong id="payback-years" style="color: var(--color-solar); font-size: 1.1rem;">-- ปี</strong>
@@ -371,10 +466,20 @@
                         <option value="this_month">Current Billing Cycle vs Prev</option>
                     </select>
                     <div id="customDateContainer" style="display: flex; align-items: center; gap: 4px;">
-                        <button id="prevDateBtn" style="background: none; border: none; color: var(--text-muted); cursor: pointer; display: flex; padding: 4px; border-radius: 4px;" onmouseover="this.style.background='var(--panel-bg)'" onmouseout="this.style.background='none'"><span class="material-symbols-rounded" style="font-size: 1.2rem;">chevron_left</span></button>
-                        <span id="dayOfWeekLabel" style="font-size: 0.85rem; font-weight: 600; min-width: 50px; text-align: center;"></span>
-                        <input type="date" id="customDateInput" style="height: 100%; border: 1px solid var(--card-border); border-radius: 6px; background: var(--panel-bg); color: var(--text-main); padding: 4px 8px; font-family: 'Inter', sans-serif; cursor: pointer;">
-                        <button id="nextDateBtn" style="background: none; border: none; color: var(--text-muted); cursor: pointer; display: flex; padding: 4px; border-radius: 4px;" onmouseover="this.style.background='var(--panel-bg)'" onmouseout="this.style.background='none'"><span class="material-symbols-rounded" style="font-size: 1.2rem;">chevron_right</span></button>
+                        <button id="prevDateBtn"
+                            style="background: none; border: none; color: var(--text-muted); cursor: pointer; display: flex; padding: 4px; border-radius: 4px;"
+                            onmouseover="this.style.background='var(--panel-bg)'"
+                            onmouseout="this.style.background='none'"><span class="material-symbols-rounded"
+                                style="font-size: 1.2rem;">chevron_left</span></button>
+                        <span id="dayOfWeekLabel"
+                            style="font-size: 0.85rem; font-weight: 600; min-width: 50px; text-align: center;"></span>
+                        <input type="date" id="customDateInput"
+                            style="height: 100%; border: 1px solid var(--card-border); border-radius: 6px; background: var(--panel-bg); color: var(--text-main); padding: 4px 8px; font-family: 'Inter', sans-serif; cursor: pointer;">
+                        <button id="nextDateBtn"
+                            style="background: none; border: none; color: var(--text-muted); cursor: pointer; display: flex; padding: 4px; border-radius: 4px;"
+                            onmouseover="this.style.background='var(--panel-bg)'"
+                            onmouseout="this.style.background='none'"><span class="material-symbols-rounded"
+                                style="font-size: 1.2rem;">chevron_right</span></button>
                     </div>
                     <select id="freqFilter">
                         <option value="15m">15 Mins</option>
@@ -384,17 +489,22 @@
                     </select>
                 </div>
             </div>
-            <div id="solar-data-badge" style="font-size: 0.8rem; color: var(--text-muted); padding: 4px 12px; display: flex; align-items: center; gap: 6px;">
+            <div id="solar-data-badge"
+                style="font-size: 0.8rem; color: var(--text-muted); padding: 4px 12px; display: flex; align-items: center; gap: 6px;">
                 <span id="solar-badge-icon" style="font-size: 0.9rem;">☀️</span>
                 <span id="solar-badge-text">Solar: Loading...</span>
             </div>
             <div class="chart-container">
                 <canvas id="usageChart"></canvas>
             </div>
-            <div id="chart-note-container" style="margin-top: 12px; font-size: 0.78rem; color: var(--text-muted); line-height: 1.6; padding: 10px 14px; background: var(--panel-bg); border-radius: 8px; border: 1px solid var(--panel-border); display: flex; align-items: flex-start; gap: 8px;">
-                <span class="material-symbols-rounded" style="font-size: 1rem; color: var(--color-solar); margin-top: 2px;">info</span>
+            <div id="chart-note-container"
+                style="margin-top: 12px; font-size: 0.78rem; color: var(--text-muted); line-height: 1.6; padding: 10px 14px; background: var(--panel-bg); border-radius: 8px; border: 1px solid var(--panel-border); display: flex; align-items: flex-start; gap: 8px;">
+                <span class="material-symbols-rounded"
+                    style="font-size: 1rem; color: var(--color-solar); margin-top: 2px;">info</span>
                 <div>
-                    • <strong>Power (W):</strong> แสดงกำลังวัตต์เฉลี่ยในแต่ละช่วงเวลา (15 Mins, Hourly, Daily) ส่วนรายเดือน <strong>Monthly</strong> จะคำนวณและแสดงหน่วยการใช้งานไฟฟ้ารวมสะสม <strong>(kWh)</strong> เพื่อให้สอดคล้องกับการคำนวณในบิลจริง<br>
+                    • <strong>Power (W):</strong> แสดงกำลังวัตต์เฉลี่ยในแต่ละช่วงเวลา (15 Mins, Hourly, Daily)
+                    ส่วนรายเดือน <strong>Monthly</strong> จะคำนวณและแสดงหน่วยการใช้งานไฟฟ้ารวมสะสม
+                    <strong>(kWh)</strong> เพื่อให้สอดคล้องกับการคำนวณในบิลจริง<br>
                     • <strong>Cost (THB):</strong> แสดงค่าไฟฟ้ารวมสะสมที่เกิดขึ้นในรอบเวลานั้น ๆ เสมอในทุกระดับความถี่
                 </div>
             </div>
@@ -406,7 +516,7 @@
         <button id="chatbot-fab" title="AI Assistant">
             <span class="material-symbols-rounded">smart_toy</span>
         </button>
-        
+
         <div id="chat-window" class="hidden">
             <div class="chat-header">
                 <div class="header-info">
@@ -425,128 +535,166 @@
                     </button>
                 </div>
             </div>
-            
+
             <div id="chat-messages">
                 <div class="message ai">
                     สวัสดีครับ! ผมเป็นผู้ช่วย AI ของคุณ มีอะไรให้ผมช่วยตรวจสอบเกี่ยวกับข้อมูลพลังงานในบ้านมั้ยครับ?
                 </div>
             </div>
-            
+
             <div class="chat-input-area">
                 <input type="text" id="chat-input" placeholder="พิมพ์ข้อความที่นี่..." autocomplete="off">
                 <button id="send-btn">
                     <span class="material-symbols-rounded">send</span>
                 </button>
-        </div>
-    </div>
-
-    <!-- System Info Modal -->
-    <div id="info-modal" class="modal-overlay hidden">
-        <div class="modal-content">
-            <div class="modal-header">
-                <div class="modal-header-title">
-                    <span class="material-symbols-rounded">menu_book</span>
-                    <h2>คู่มือและรายละเอียดการทำงานของระบบ</h2>
-                </div>
-                <button id="close-info" class="icon-btn" title="Close">
-                    <span class="material-symbols-rounded">close</span>
-                </button>
-            </div>
-            <div class="modal-body">
-                <div class="info-section-grid">
-                    
-                    <div class="info-card">
-                        <div class="info-card-header">
-                            <span class="material-symbols-rounded font-icon-blue">analytics</span>
-                            <h3>ภาพรวมของระบบ (System Overview)</h3>
-                        </div>
-                        <p>แดชบอร์ดนี้ทำหน้าที่วิเคราะห์ จำลอง และคาดการณ์การใช้พลังงานไฟฟ้าของบ้าน โดยนำเข้าข้อมูลดิบจาก <strong>Google Sheets</strong> ซึ่งดึงข้อมูลมาประมวลผลจากอุปกรณ์วัดไฟอัจฉริยะ <strong>Shelly Smart Meter</strong> เพียงตัวเดียว (ผ่านแผ่นงาน <code>Log_15Min</code>) เพื่อวิเคราะห์พฤติกรรมการใช้ไฟ จำลองประสิทธิภาพโซลาร์เซลล์ และประเมินบิลค่าไฟล่วงหน้า</p>
-                    </div>
-
-                    <div class="info-card">
-                        <div class="info-card-header">
-                            <span class="material-symbols-rounded font-icon-orange">electric_meter</span>
-                            <h3>ระบบวัดไฟบ้านหลัก (Shelly Smart Meter)</h3>
-                        </div>
-                        <p>ข้อมูลการกินไฟหลักของบ้านถูกวัดโดยอุปกรณ์ <strong>Shelly Smart Meter</strong> และเก็บสถิติลงชีต <code>Log_15Min</code> ทุก ๆ 15 นาที ผ่านระบบอัตโนมัติภายนอก (เช่น Home Assistant หรือ Node-RED) โดยนำเข้าคอลัมน์สำคัญ ได้แก่:</p>
-                        <ul>
-                            <li><strong>วัน-เวลา:</strong> วันและเวลาที่เก็บตัวอย่างข้อมูล</li>
-                            <li><strong>หน่วยสะสม (Total kWh):</strong> หน่วยพลังงานไฟฟ้าสะสมทั้งหมด</li>
-                            <li><strong>กำลังไฟ (Watt):</strong> กำลังไฟฟ้าที่ใช้งาน ณ เวลานั้น</li>
-                            <li><strong>แรงดันไฟ (Volt) & กระแสไฟ (mA):</strong> แรงดันและกระแสไฟฟ้าขณะวัด</li>
-                        </ul>
-                    </div>
-
-                    <div class="info-card">
-                        <div class="info-card-header">
-                            <span class="material-symbols-rounded font-icon-teal">table_chart</span>
-                            <h3>โครงสร้างชีตข้อมูล (Google Sheet Structure)</h3>
-                        </div>
-                        <p>ระบบจะดึงข้อมูลผ่านตารางแผ่นงานหลักใน Google Sheets เพื่อประมวลผล:</p>
-                        <ul>
-                            <li><strong>Log_15Min:</strong> ข้อมูลดิบความละเอียดสูงทุก 15 นาที สำหรับวาดกราฟแสดงพฤติกรรมการใช้พลังงานและวิเคราะห์ไฟกระชาก</li>
-                            <li><strong>Log_Hourly:</strong> สรุปยอดหน่วยการใช้ไฟฟ้าสะสมรายชั่วโมง</li>
-                            <li><strong>Daily_Summary:</strong> สรุปหน่วยและประเมินยอดรวมรายวัน ณ เวลาเที่ยงคืนของทุกวัน</li>
-                        </ul>
-                    </div>
-
-                    <div class="info-card">
-                        <div class="info-card-header">
-                            <span class="material-symbols-rounded font-icon-yellow">solar_power</span>
-                            <h3>ระบบพยากรณ์และการคำนวณจำลองโซลาร์เซลล์</h3>
-                        </div>
-                        <p>ระบบสามารถคำนวณประเมินกำลังผลิตโซลาร์เซลล์แบบกึ่งเรียลไทม์ โดยมีกลไกดังนี้:</p>
-                        <ul>
-                            <li><strong>การพยากรณ์สภาพอากาศ:</strong> เชื่อมต่อกับ API ของ <strong>Open-Meteo</strong> เพื่อดึงข้อมูลรังสีดวงอาทิตย์ย้อนหลังและพยากรณ์ล่วงหน้า (Shortwave Radiation, Cloud Cover, Temperature) ตามพิกัดบ้านของคุณ (Latitude: <code>13.937456</code>, Longitude: <code>100.601234</code>)</li>
-                            <li><strong>ตัวหักลดประสิทธิภาพ (Derating Factors):</strong> คำนวณความสูญเสียในระบบแบบสมจริง ได้แก่ ประสิทธิภาพ Inverter (96%), คราบฝุ่นเกาะแผง (4% loss), การสูญเสียในสายไฟ (2% loss), Module Mismatch (2% loss) และความร้อนบนแผง (หักลดประสิทธิภาพลง -0.4% ต่อองศาเซลเซียส เมื่ออุณหภูมิผิวแผงเกินกว่า 25°C)</li>
-                            <li><strong>การชาร์จแบตเตอรี่ (Battery Simulation):</strong> จำลองระบบกักเก็บพลังงานโดยคำนวณประสิทธิภาพการแปลงไฟเข้า/ออก (Round-trip Efficiency 90%) และจำกัดความลึกคายประจุ (Depth of Discharge 80%) ของความจุแบตเตอรี่สะสม</li>
-                        </ul>
-                    </div>
-
-                    <div class="info-card">
-                        <div class="info-card-header">
-                            <span class="material-symbols-rounded font-icon-purple">calculate</span>
-                            <h3>สูตรคำนวณค่าไฟฟ้า (MEA Tariff Formulas)</h3>
-                        </div>
-                        <p>สูตรการคำนวณค่าไฟอ้างอิงจากประกาศอัตราค่าบริการไฟฟ้าประเภท 1.2 (บ้านอยู่อาศัย) ของการไฟฟ้านครหลวง (MEA) โดยมี 2 รูปแบบ:</p>
-                        <ul>
-                            <li><strong>อัตราปกติ (Progressive Rate):</strong> คำนวณแบบอัตราก้าวหน้า 3 ขั้น:
-                                <br>&bull; 150 หน่วยแรก &rarr; 3.2484 บาท/หน่วย
-                                <br>&bull; 250 หน่วยถัดไป &rarr; 4.2218 บาท/หน่วย
-                                <br>&bull; ส่วนที่เกิน 400 หน่วย &rarr; 4.4217 บาท/หน่วย
-                                <br>&bull; รวมค่าบริการรายเดือนคงที่ 38.22 บาท
-                            </li>
-                            <li><strong>อัตรา TOU (Time of Use Rate):</strong> คำนวณตามช่วงเวลา:
-                                <br>&bull; <strong>On-Peak</strong> (จันทร์-ศุกร์ 09:00 - 22:00 น.) &rarr; 5.7982 บาท/หน่วย
-                                <br>&bull; <strong>Off-Peak</strong> (จันทร์-ศุกร์ 22:00 - 09:00 น., เสาร์-อาทิตย์, วันหยุดราชการ) &rarr; 2.6369 บาท/หน่วย
-                                <br>&bull; รวมค่าบริการรายเดือนคงที่ 24.62 บาท
-                            </li>
-                            <li><strong>ค่า Ft และภาษี VAT:</strong> ทั้งสองรูปแบบจะนำจำนวนหน่วยรวมคูณด้วยค่า Ft (คงที่ที่ 0.1623 บาท/หน่วย) บวกรวมค่าไฟฐาน แล้วนำไปบวกภาษีมูลค่าเพิ่ม (VAT 7%) อีกครั้งหนึ่ง</li>
-                            <li><strong>รอบบิล (Billing Cycle):</strong> กำหนดวันเริ่มรอบบิลใหม่ทุกวันที่ 24 ของเดือน</li>
-                        </ul>
-                    </div>
-
-                    <div class="info-card">
-                        <div class="info-card-header">
-                            <span class="material-symbols-rounded font-icon-red">smart_toy</span>
-                            <h3>ผู้ช่วยวิเคราะห์พลังงานอัจฉริยะ (Energy AI)</h3>
-                        </div>
-                        <p><strong>Energy AI Chatbot</strong> ทำงานโดยใช้โมเดลภาษาขนาดใหญ่ (LLM) ผ่าน Gemini API โดยรับบริบท (Context) พฤติกรรมการใช้ไฟภายในบ้านของคุณโดยตรง ซึ่งรวมถึง:</p>
-                        <ul>
-                            <li>ข้อมูลค่าไฟปัจจุบัน ยอดประมาณการสิ้นเดือน กำลังไฟแบบเรียลไทม์</li>
-                            <li>ประวัติการใช้งานพลังงานรายวันย้อนหลัง 14 วันล่าสุด</li>
-                            <li>AI จะช่วยวิเคราะห์พฤติกรรมการเปิดแอร์ และแนะนำแผนการประหยัดพลังงานที่เหมาะสมกับบ้านคุณ</li>
-                        </ul>
-                    </div>
-
-                </div>
             </div>
         </div>
-    </div>
 
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="app.js?v=1.0.4"></script>
-    <script src="chatbot.js?v=1.0.1"></script>
+        <!-- System Info Modal -->
+        <div id="info-modal" class="modal-overlay hidden">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <div class="modal-header-title">
+                        <span class="material-symbols-rounded">menu_book</span>
+                        <h2>คู่มือและรายละเอียดการทำงานของระบบ</h2>
+                    </div>
+                    <button id="close-info" class="icon-btn" title="Close">
+                        <span class="material-symbols-rounded">close</span>
+                    </button>
+                </div>
+                <div class="modal-body">
+                    <div class="info-section-grid">
+
+                        <div class="info-card">
+                            <div class="info-card-header">
+                                <span class="material-symbols-rounded font-icon-blue">analytics</span>
+                                <h3>ภาพรวมของระบบ (System Overview)</h3>
+                            </div>
+                            <p>แดชบอร์ดนี้ทำหน้าที่วิเคราะห์ จำลอง และคาดการณ์การใช้พลังงานไฟฟ้าของบ้าน
+                                โดยนำเข้าข้อมูลดิบจาก <strong>Google Sheets</strong>
+                                ซึ่งดึงข้อมูลมาประมวลผลจากอุปกรณ์วัดไฟอัจฉริยะ <strong>Shelly Smart Meter</strong>
+                                เพียงตัวเดียว (ผ่านแผ่นงาน <code>Log_15Min</code>) เพื่อวิเคราะห์พฤติกรรมการใช้ไฟ
+                                จำลองประสิทธิภาพโซลาร์เซลล์ และประเมินบิลค่าไฟล่วงหน้า</p>
+                        </div>
+
+                        <div class="info-card">
+                            <div class="info-card-header">
+                                <span class="material-symbols-rounded font-icon-orange">electric_meter</span>
+                                <h3>ระบบวัดไฟบ้านหลัก (Shelly Smart Meter)</h3>
+                            </div>
+                            <p>ข้อมูลการกินไฟหลักของบ้านถูกวัดโดยอุปกรณ์ <strong>Shelly Smart Meter</strong>
+                                และเก็บสถิติลงชีต <code>Log_15Min</code> ทุก ๆ 15 นาที ผ่านระบบอัตโนมัติภายนอก (เช่น
+                                Home Assistant หรือ Node-RED) โดยนำเข้าคอลัมน์สำคัญ ได้แก่:</p>
+                            <ul>
+                                <li><strong>วัน-เวลา:</strong> วันและเวลาที่เก็บตัวอย่างข้อมูล</li>
+                                <li><strong>หน่วยสะสม (Total kWh):</strong> หน่วยพลังงานไฟฟ้าสะสมทั้งหมด</li>
+                                <li><strong>กำลังไฟ (Watt):</strong> กำลังไฟฟ้าที่ใช้งาน ณ เวลานั้น</li>
+                                <li><strong>แรงดันไฟ (Volt) & กระแสไฟ (mA):</strong> แรงดันและกระแสไฟฟ้าขณะวัด</li>
+                            </ul>
+                        </div>
+
+                        <div class="info-card">
+                            <div class="info-card-header">
+                                <span class="material-symbols-rounded font-icon-teal">table_chart</span>
+                                <h3>โครงสร้างชีตข้อมูล (Google Sheet Structure)</h3>
+                            </div>
+                            <p>ระบบจะดึงข้อมูลผ่านตารางแผ่นงานหลักใน Google Sheets เพื่อประมวลผล:</p>
+                            <ul>
+                                <li><strong>Log_15Min:</strong> ข้อมูลดิบความละเอียดสูงทุก 15 นาที
+                                    สำหรับวาดกราฟแสดงพฤติกรรมการใช้พลังงานและวิเคราะห์ไฟกระชาก</li>
+                                <li><strong>Log_Hourly:</strong> สรุปยอดหน่วยการใช้ไฟฟ้าสะสมรายชั่วโมง</li>
+                                <li><strong>Daily_Summary:</strong> สรุปหน่วยและประเมินยอดรวมรายวัน ณ
+                                    เวลาเที่ยงคืนของทุกวัน</li>
+                            </ul>
+                        </div>
+
+                        <div class="info-card">
+                            <div class="info-card-header">
+                                <span class="material-symbols-rounded font-icon-yellow">solar_power</span>
+                                <h3>ระบบพยากรณ์และการคำนวณจำลองโซลาร์เซลล์</h3>
+                            </div>
+                            <p>ระบบสามารถคำนวณประเมินกำลังผลิตโซลาร์เซลล์แบบกึ่งเรียลไทม์ โดยมีกลไกดังนี้:</p>
+                            <ul>
+                                <li><strong>การพยากรณ์สภาพอากาศ:</strong> เชื่อมต่อกับ API ของ
+                                    <strong>Open-Meteo</strong> เพื่อดึงข้อมูลรังสีดวงอาทิตย์ย้อนหลังและพยากรณ์ล่วงหน้า
+                                    (Shortwave Radiation, Cloud Cover, Temperature) ตามพิกัดบ้านของคุณ (Latitude:
+                                    <code>13.937456</code>, Longitude: <code>100.601234</code>)</li>
+                                <li><strong>ตัวหักลดประสิทธิภาพ (Derating Factors):</strong>
+                                    คำนวณความสูญเสียในระบบแบบสมจริง ได้แก่ ประสิทธิภาพ Inverter (96%), คราบฝุ่นเกาะแผง
+                                    (4% loss), การสูญเสียในสายไฟ (2% loss), Module Mismatch (2% loss) และความร้อนบนแผง
+                                    (หักลดประสิทธิภาพลง -0.4% ต่อองศาเซลเซียส เมื่ออุณหภูมิผิวแผงเกินกว่า 25°C)</li>
+                                <li><strong>การชาร์จแบตเตอรี่ (Battery Simulation):</strong>
+                                    จำลองระบบกักเก็บพลังงานโดยคำนวณประสิทธิภาพการแปลงไฟเข้า/ออก (Round-trip Efficiency
+                                    90%) และจำกัดความลึกคายประจุ (Depth of Discharge 80%) ของความจุแบตเตอรี่สะสม</li>
+                            </ul>
+                        </div>
+
+                        <div class="info-card">
+                            <div class="info-card-header">
+                                <span class="material-symbols-rounded font-icon-purple">calculate</span>
+                                <h3>สูตรคำนวณค่าไฟฟ้า (MEA Tariff Formulas)</h3>
+                            </div>
+                            <p>สูตรการคำนวณค่าไฟอ้างอิงจากประกาศอัตราค่าบริการไฟฟ้าประเภท 1.2 (บ้านอยู่อาศัย)
+                                ของการไฟฟ้านครหลวง (MEA) โดยมี 2 รูปแบบ:</p>
+                            <ul>
+                                <li><strong>อัตราปกติ (Progressive Rate):</strong> คำนวณแบบอัตราก้าวหน้า 3 ขั้น:
+                                    <br>&bull; 150 หน่วยแรก &rarr; 3.2484 บาท/หน่วย
+                                    <br>&bull; 250 หน่วยถัดไป &rarr; 4.2218 บาท/หน่วย
+                                    <br>&bull; ส่วนที่เกิน 400 หน่วย &rarr; 4.4217 บาท/หน่วย
+                                    <br>&bull; รวมค่าบริการรายเดือนคงที่ 38.22 บาท
+                                </li>
+                                <li><strong>อัตรา TOU (Time of Use Rate):</strong> คำนวณตามช่วงเวลา:
+                                    <br>&bull; <strong>On-Peak</strong> (จันทร์-ศุกร์ 09:00 - 22:00 น.) &rarr; 5.7982
+                                    บาท/หน่วย
+                                    <br>&bull; <strong>Off-Peak</strong> (จันทร์-ศุกร์ 22:00 - 09:00 น., เสาร์-อาทิตย์,
+                                    วันหยุดราชการ) &rarr; 2.6369 บาท/หน่วย
+                                    <br>&bull; รวมค่าบริการรายเดือนคงที่ 24.62 บาท
+                                </li>
+                                <li><strong>ค่า Ft และภาษี VAT:</strong> ทั้งสองรูปแบบจะนำจำนวนหน่วยรวมคูณด้วยค่า Ft
+                                    (คงที่ที่ 0.1623 บาท/หน่วย) บวกรวมค่าไฟฐาน แล้วนำไปบวกภาษีมูลค่าเพิ่ม (VAT 7%)
+                                    อีกครั้งหนึ่ง</li>
+                                <li><strong>รอบบิล (Billing Cycle):</strong> กำหนดวันเริ่มรอบบิลใหม่ทุกวันที่ 24
+                                    ของเดือน</li>
+                            </ul>
+                        </div>
+
+                        <div class="info-card">
+                            <div class="info-card-header">
+                                <span class="material-symbols-rounded font-icon-blue">calendar_today</span>
+                                <h3>การแสดงผลโหมดรายวัน (Daily View & Sleeping Day)</h3>
+                            </div>
+                            <p>เมื่อผู้ใช้สลับมาดูในโหมด <strong>รายวัน (Daily View)</strong> ระบบจะคำนวณและประมวลผลข้อมูลดังนี้:</p>
+                            <ul>
+                                <li><strong>การคำนวณสัดส่วนค่าไฟเฉลี่ย:</strong> สำหรับอัตราปกติก้าวหน้า ระบบจะคำนวณค่าไฟของทั้งรอบบิลก่อน แล้วจึงคิดสัดส่วนรายวันออกมาตามสัดส่วนการใช้ไฟ (dayKwh / cycleKwh) เพื่อให้ได้ค่าใช้จ่ายที่สะท้อนความเป็นจริง ไม่ต่ำกว่าปกติ</li>
+                                <li><strong>รอบวันเปิดแอร์นอน (Logical Sleeping Day):</strong> เพื่อให้สอดคล้องกับพฤติกรรมเปิดแอร์นอนจริง ระบบจึงจัดกลุ่มข้อมูลตาม **ช่วงเวลา 07:00 น. ของวันนี้ ไปสิ้นสุดที่ 07:00 น. ของวันถัดไป** ซึ่งหมายความว่าข้อมูลเช้ามืด (00:00 - 07:00 น.) ของวันถัดไปจะถูกนับรวมกับการนอนของวันปฏิทินเริ่มต้นด้วย</li>
+                                <li><strong>การซิงค์แกนเวลากราฟ:</strong> กราฟพฤติกรรมการใช้พลังงานในโหมดรายวันจะปรับเวลาบนแกน X อัตโนมัติให้เริ่มแสดงผลตั้งแต่ 07:00 น. ไปจนถึง 06:45 น. ของวันถัดไปสอดคล้องตรงกัน</li>
+                            </ul>
+                        </div>
+
+                        <div class="info-card">
+                            <div class="info-card-header">
+                                <span class="material-symbols-rounded font-icon-red">smart_toy</span>
+                                <h3>ผู้ช่วยวิเคราะห์พลังงานอัจฉริยะ (Energy AI)</h3>
+                            </div>
+                            <p><strong>Energy AI Chatbot</strong> ทำงานโดยใช้โมเดลภาษาขนาดใหญ่ (LLM) ผ่าน Gemini API
+                                โดยรับบริบท (Context) พฤติกรรมการใช้ไฟภายในบ้านของคุณโดยตรง ซึ่งรวมถึง:</p>
+                            <ul>
+                                <li>ข้อมูลค่าไฟปัจจุบัน ยอดประมาณการสิ้นเดือน กำลังไฟแบบเรียลไทม์</li>
+                                <li>ประวัติการใช้งานพลังงานรายวันย้อนหลัง 14 วันล่าสุด</li>
+                                <li>AI จะช่วยวิเคราะห์พฤติกรรมการเปิดแอร์
+                                    และแนะนำแผนการประหยัดพลังงานที่เหมาะสมกับบ้านคุณ</li>
+                            </ul>
+                        </div>
+
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+        <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+        <script src="app.js?v=1.0.4"></script>
+        <script src="chatbot.js?v=1.0.1"></script>
 </body>
+
 </html>

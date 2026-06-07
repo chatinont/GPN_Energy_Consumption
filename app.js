@@ -1,4 +1,21 @@
 document.addEventListener('DOMContentLoaded', () => {
+    function getLocalDateString(date) {
+        let d = new Date(date);
+        d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+        return d.toISOString().slice(0, 10);
+    }
+    window.getLocalDateString = getLocalDateString;
+
+    function parseLocalDate(dateStr) {
+        if (!dateStr) return new Date();
+        const parts = dateStr.split('-');
+        if (parts.length === 3) {
+            return new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]), 0, 0, 0, 0);
+        }
+        return new Date(dateStr);
+    }
+    window.parseLocalDate = parseLocalDate;
+
     initDashboard();
 
     const THAI_DAYS = ['อาทิตย์','จันทร์','อังคาร','พุธ','พฤหัสบดี','ศุกร์','เสาร์'];
@@ -6,16 +23,182 @@ document.addEventListener('DOMContentLoaded', () => {
     function updateDayLabel(dateStr) {
         let el = document.getElementById('dayOfWeekLabel');
         if (!el || !dateStr) return;
-        let d = new Date(dateStr);
+        let d = parseLocalDate(dateStr);
         let dayIdx = d.getDay();
         el.textContent = 'วัน' + THAI_DAYS[dayIdx];
         el.style.color = DAY_COLORS[dayIdx];
     }
 
+    window.dashboardMode = 'billing';
+    window.selectedDashboardDate = new Date();
+    window.selectedDashboardDate.setHours(0,0,0,0);
+
+
+    function updateDashboardDayLabel(date) {
+        let el = document.getElementById('dashboardDayOfWeekLabel');
+        if (!el || !date) return;
+        let dayIdx = date.getDay();
+        el.textContent = 'วัน' + THAI_DAYS[dayIdx];
+        el.style.color = DAY_COLORS[dayIdx];
+    }
+    window.updateDashboardDayLabel = updateDashboardDayLabel;
+
     const timeRangeFilter = document.getElementById('timeRangeFilter');
     const freqFilter = document.getElementById('freqFilter');
     const metricFilter = document.getElementById('metricFilter');
     const customDateInput = document.getElementById('customDateInput');
+    const dashboardDateInput = document.getElementById('dashboardDateInput');
+    const modeBillingBtn = document.getElementById('modeBillingBtn');
+    const modeDailyBtn = document.getElementById('modeDailyBtn');
+    const billingCycleSelectorContainer = document.getElementById('billingCycleSelectorContainer');
+    const dailyDateSelectorContainer = document.getElementById('dailyDateSelectorContainer');
+
+    if (modeBillingBtn && modeDailyBtn) {
+        modeBillingBtn.addEventListener('click', () => {
+            window.dashboardMode = 'billing';
+            modeBillingBtn.classList.add('active');
+            modeDailyBtn.classList.remove('active');
+            modeBillingBtn.style.background = 'var(--card-bg)';
+            modeBillingBtn.style.color = 'var(--text-main)';
+            modeBillingBtn.style.boxShadow = '0 1px 3px rgba(0,0,0,0.2)';
+            modeDailyBtn.style.background = 'transparent';
+            modeDailyBtn.style.color = 'var(--text-muted)';
+            modeDailyBtn.style.boxShadow = 'none';
+
+            if (billingCycleSelectorContainer) billingCycleSelectorContainer.style.display = 'flex';
+            if (dailyDateSelectorContainer) dailyDateSelectorContainer.style.display = 'none';
+
+            document.getElementById('card-bill-title').textContent = "Current Bill So Far";
+            document.getElementById('card-est-title').textContent = "Estimated Final Bill";
+            document.getElementById('cb-avg-day-container').style.display = '';
+            document.getElementById('cb-avg-cost-container').style.display = '';
+            document.getElementById('est-avg-day-container').style.display = '';
+            document.getElementById('est-avg-cost-container').style.display = '';
+            document.getElementById('sol-daily-kwh-label').textContent = "☀️ ผลิตได้/เดือน";
+            document.getElementById('sol-daily-saving-label').textContent = "💰 ประหยัด/เดือน";
+            
+            if (timeRangeFilter) {
+                timeRangeFilter.value = 'this_month';
+                timeRangeFilter.dispatchEvent(new Event('change'));
+            }
+
+            if (window.globalRawRows) {
+                calculateBillingCosts(window.globalRawRows);
+            }
+        });
+
+        modeDailyBtn.addEventListener('click', () => {
+            window.dashboardMode = 'daily';
+            modeDailyBtn.classList.add('active');
+            modeBillingBtn.classList.remove('active');
+            modeDailyBtn.style.background = 'var(--card-bg)';
+            modeDailyBtn.style.color = 'var(--text-main)';
+            modeDailyBtn.style.boxShadow = '0 1px 3px rgba(0,0,0,0.2)';
+            modeBillingBtn.style.background = 'transparent';
+            modeBillingBtn.style.color = 'var(--text-muted)';
+            modeBillingBtn.style.boxShadow = 'none';
+
+            if (billingCycleSelectorContainer) billingCycleSelectorContainer.style.display = 'none';
+            if (dailyDateSelectorContainer) dailyDateSelectorContainer.style.display = 'flex';
+
+            document.getElementById('card-bill-title').textContent = "Selected Day Cost";
+            document.getElementById('card-est-title').textContent = "Simulated Daily Cost";
+            document.getElementById('cb-avg-day-container').style.display = 'none';
+            document.getElementById('cb-avg-cost-container').style.display = 'none';
+            document.getElementById('est-avg-day-container').style.display = 'none';
+            document.getElementById('est-avg-cost-container').style.display = 'none';
+            document.getElementById('sol-daily-kwh-label').textContent = "☀️ ผลิตได้/วัน";
+            document.getElementById('sol-daily-saving-label').textContent = "💰 ประหยัด/วัน";
+
+            if (dashboardDateInput && dashboardDateInput.value) {
+                window.selectedDashboardDate = parseLocalDate(dashboardDateInput.value);
+                if (customDateInput) {
+                    customDateInput.value = dashboardDateInput.value;
+                    updateDayLabel(customDateInput.value);
+                }
+            }
+            if (timeRangeFilter) {
+                timeRangeFilter.value = 'custom_date';
+                timeRangeFilter.dispatchEvent(new Event('change'));
+            }
+
+            if (window.globalRawRows) {
+                calculateBillingCosts(window.globalRawRows);
+            }
+        });
+    }
+
+    const dashPrevDateBtn = document.getElementById('dashPrevDateBtn');
+    const dashNextDateBtn = document.getElementById('dashNextDateBtn');
+
+    if (dashPrevDateBtn && dashboardDateInput) {
+        dashPrevDateBtn.addEventListener('click', () => {
+            if (dashboardDateInput.value) {
+                let d = parseLocalDate(dashboardDateInput.value);
+                d.setDate(d.getDate() - 1);
+                dashboardDateInput.value = getLocalDateString(d);
+                window.selectedDashboardDate = d;
+                updateDashboardDayLabel(d);
+                
+                if (customDateInput) {
+                    customDateInput.value = dashboardDateInput.value;
+                    updateDayLabel(customDateInput.value);
+                }
+
+                if (window.globalRawRows) {
+                    calculateBillingCosts(window.globalRawRows);
+                    renderChart(window.globalRawRows);
+                }
+            }
+        });
+    }
+
+    if (dashNextDateBtn && dashboardDateInput) {
+        dashNextDateBtn.addEventListener('click', () => {
+            if (dashboardDateInput.value) {
+                let d = parseLocalDate(dashboardDateInput.value);
+                d.setDate(d.getDate() + 1);
+                dashboardDateInput.value = getLocalDateString(d);
+                window.selectedDashboardDate = d;
+                updateDashboardDayLabel(d);
+                
+                if (customDateInput) {
+                    customDateInput.value = dashboardDateInput.value;
+                    updateDayLabel(customDateInput.value);
+                }
+
+                if (window.globalRawRows) {
+                    calculateBillingCosts(window.globalRawRows);
+                    renderChart(window.globalRawRows);
+                }
+            }
+        });
+    }
+
+    if (dashboardDateInput) {
+        dashboardDateInput.addEventListener('click', () => {
+            try {
+                if (typeof dashboardDateInput.showPicker === 'function') {
+                    dashboardDateInput.showPicker();
+                }
+            } catch (e) {}
+        });
+        dashboardDateInput.addEventListener('change', () => {
+            let d = parseLocalDate(dashboardDateInput.value);
+            window.selectedDashboardDate = d;
+            updateDashboardDayLabel(d);
+            
+            if (customDateInput) {
+                customDateInput.value = dashboardDateInput.value;
+                updateDayLabel(customDateInput.value);
+            }
+
+            if (window.globalRawRows) {
+                calculateBillingCosts(window.globalRawRows);
+                renderChart(window.globalRawRows);
+            }
+        });
+    }
 
     if (metricFilter) {
         metricFilter.addEventListener('change', () => {
@@ -65,10 +248,19 @@ document.addEventListener('DOMContentLoaded', () => {
     if (prevDateBtn && customDateInput) {
         prevDateBtn.addEventListener('click', () => {
             if (customDateInput.value) {
-                let d = new Date(customDateInput.value);
+                let d = parseLocalDate(customDateInput.value);
                 d.setDate(d.getDate() - 1);
-                customDateInput.value = d.toISOString().slice(0, 10);
+                customDateInput.value = getLocalDateString(d);
                 updateDayLabel(customDateInput.value);
+                
+                if (window.dashboardMode === 'daily' && dashboardDateInput) {
+                    dashboardDateInput.value = customDateInput.value;
+                    let dDash = parseLocalDate(customDateInput.value);
+                    window.selectedDashboardDate = dDash;
+                    if (window.updateDashboardDayLabel) window.updateDashboardDayLabel(dDash);
+                    if (window.globalRawRows) calculateBillingCosts(window.globalRawRows);
+                }
+
                 if (window.globalRawRows) renderChart(window.globalRawRows);
             }
         });
@@ -77,10 +269,19 @@ document.addEventListener('DOMContentLoaded', () => {
     if (nextDateBtn && customDateInput) {
         nextDateBtn.addEventListener('click', () => {
             if (customDateInput.value) {
-                let d = new Date(customDateInput.value);
+                let d = parseLocalDate(customDateInput.value);
                 d.setDate(d.getDate() + 1);
-                customDateInput.value = d.toISOString().slice(0, 10);
+                customDateInput.value = getLocalDateString(d);
                 updateDayLabel(customDateInput.value);
+
+                if (window.dashboardMode === 'daily' && dashboardDateInput) {
+                    dashboardDateInput.value = customDateInput.value;
+                    let dDash = parseLocalDate(customDateInput.value);
+                    window.selectedDashboardDate = dDash;
+                    if (window.updateDashboardDayLabel) window.updateDashboardDayLabel(dDash);
+                    if (window.globalRawRows) calculateBillingCosts(window.globalRawRows);
+                }
+
                 if (window.globalRawRows) renderChart(window.globalRawRows);
             }
         });
@@ -96,6 +297,15 @@ document.addEventListener('DOMContentLoaded', () => {
         });
         customDateInput.addEventListener('change', () => {
             updateDayLabel(customDateInput.value);
+            
+            if (window.dashboardMode === 'daily' && dashboardDateInput) {
+                dashboardDateInput.value = customDateInput.value;
+                let d = parseLocalDate(customDateInput.value);
+                window.selectedDashboardDate = d;
+                if (window.updateDashboardDayLabel) window.updateDashboardDayLabel(d);
+                if (window.globalRawRows) calculateBillingCosts(window.globalRawRows);
+            }
+
             if (window.globalRawRows) renderChart(window.globalRawRows);
         });
     }
@@ -569,6 +779,18 @@ function processData(rows) {
         const lastRow = rows[rows.length - 1];
         
         calculateRealtime(lastRow);
+
+        if (lastRow && lastRow[0]) {
+            let lastRowDate = parseRowDate(lastRow[0]);
+            let logicalDate = new Date(lastRowDate.getTime() - 7 * 3600 * 1000);
+            const dashboardDateInput = document.getElementById('dashboardDateInput');
+            if (dashboardDateInput && !dashboardDateInput.value) {
+                let dateStr = getLocalDateString(logicalDate);
+                dashboardDateInput.value = dateStr;
+                window.selectedDashboardDate = parseLocalDate(dateStr);
+                if (window.updateDashboardDayLabel) window.updateDashboardDayLabel(window.selectedDashboardDate);
+            }
+        }
         
         // Compile and populate billing cycles dropdown dynamically
         let uniqueMap = new Map();
@@ -641,19 +863,27 @@ function calculateBillingCosts(rows) {
     let startCycle;
     let endOfCycle;
     
-    if (dropdown && dropdown.value) {
-        let startMs = parseInt(dropdown.value);
+    let selectedDate = window.selectedDashboardDate || new Date();
+    if (window.dashboardMode === 'daily') {
+        let startMs = getBillingCycleStartMs(selectedDate);
         startCycle = new Date(startMs);
         endOfCycle = new Date(startCycle);
         endOfCycle.setMonth(endOfCycle.getMonth() + 1);
     } else {
-        startCycle = new Date(today.getFullYear(), today.getMonth(), BILLING_DAY);
-        if (today.getDate() < BILLING_DAY) {
-            startCycle.setMonth(startCycle.getMonth() - 1);
+        if (dropdown && dropdown.value) {
+            let startMs = parseInt(dropdown.value);
+            startCycle = new Date(startMs);
+            endOfCycle = new Date(startCycle);
+            endOfCycle.setMonth(endOfCycle.getMonth() + 1);
+        } else {
+            startCycle = new Date(today.getFullYear(), today.getMonth(), BILLING_DAY);
+            if (today.getDate() < BILLING_DAY) {
+                startCycle.setMonth(startCycle.getMonth() - 1);
+            }
+            startCycle.setHours(0,0,0,0);
+            endOfCycle = new Date(startCycle);
+            endOfCycle.setMonth(endOfCycle.getMonth() + 1);
         }
-        startCycle.setHours(0,0,0,0);
-        endOfCycle = new Date(startCycle);
-        endOfCycle.setMonth(endOfCycle.getMonth() + 1);
     }
 
     // Calculate dynamic cycle length
@@ -667,7 +897,7 @@ function calculateBillingCosts(rows) {
     const eveScale = 1 + (parseFloat(document.getElementById('evening-adj-slider')?.value || 0) / 100);
     const niteScale = 1 + (parseFloat(document.getElementById('night-adj-slider')?.value || 0) / 100);
     
-    // Accumulators
+    // Accumulators for the billing cycle
     let cycleKwh = 0;       // Actual Gross
     let cycleOnPeakKwh = 0;
     let cycleOffPeakKwh = 0;
@@ -689,10 +919,40 @@ function calculateBillingCosts(rows) {
     let cycleDayGridKwh = 0;  // Net import Day
     let cycleEveGridKwh = 0;  // Net import Eve
     let cycleNiteGridKwh = 0; // Net import Nite
+
+    // Daily accumulators (used in Daily View)
+    let dayKwh = 0;
+    let dayOnPeakKwh = 0;
+    let dayOffPeakKwh = 0;
+    let daySimKwh = 0;
+    let dayOnPeakSimKwh = 0;
+    let dayOffPeakSimKwh = 0;
+    let daySolarGridKwh = 0;
+    let dayOnPeakGridKwh = 0;
+    let dayOffPeakGridKwh = 0;
+    let daySolarKwh = 0;
+    let dayEveningKwh = 0;
+    let dayNightKwh = 0;
+    let daySolarSimTotal = 0;
+    let dayEveSimTotal = 0;
+    let dayNiteSimTotal = 0;
+    let daySolarProduced = 0;
+    
+    let dayBaselineSolarGridKwh = 0;
+    let dayBaselineDayImport = 0;
+    let dayBaselineEveImport = 0;
+    let dayBaselineNiteImport = 0;
+    let dayBaselineOnPeakImport = 0;
+    let dayBaselineOffPeakImport = 0;
+    
+    let dayBaselineSolarKwh = 0;
+    let dayBaselineEveKwh = 0;
+    let dayBaselineNiteKwh = 0;
+    let dayBaselineOnPeakKwh = 0;
+    let dayBaselineOffPeakKwh = 0;
     
     let solarPanelKw = getSolarKW();
     let batteryFullCapacity = getBatteryKWh();
-     // dodEl removed
     let batteryDoD = 0.8;
     let usableBatteryCapacity = batteryFullCapacity * batteryDoD;
     let currentBatterySim = 0;
@@ -703,14 +963,12 @@ function calculateBillingCosts(rows) {
     const todayStr = new Date().toLocaleDateString('en-GB');
 
     // --- STEP 1: Deduplication & Sorting ---
-    // Shelly loggers can sometimes send duplicate rows. We use a Map to keep only the latest row per timestamp.
     let uniqueMap = new Map();
     for (let r of rows) {
         if (!r[0]) continue;
         let ts = parseRowDate(r[0]).getTime();
         uniqueMap.set(ts, r);
     }
-    // Sort chronologically for simulation stability
     let sortedRows = Array.from(uniqueMap.values()).sort((a,b) => parseRowDate(a[0]) - parseRowDate(b[0]));
 
     // Declare globals for the loop (re-initialized each run)
@@ -735,12 +993,21 @@ function calculateBillingCosts(rows) {
 
     for (let r of sortedRows) {
         let rDate = parseRowDate(r[0]);
-        if (rDate >= startCycle && rDate < endOfCycle) {
+        let checkDate = rDate;
+        if (window.dashboardMode === 'daily') {
+            checkDate = new Date(rDate.getTime() - 7 * 3600 * 1000);
+        }
+        if (checkDate >= startCycle && checkDate < endOfCycle) {
             let addedKwh = parseNumber(r[2]);
             cycleKwh += addedKwh;
             cycleCount++;
             
             let hour = rDate.getHours();
+            let isSelDay = (window.dashboardMode === 'daily') ? (checkDate.toDateString() === selectedDate.toDateString()) : (rDate.toDateString() === selectedDate.toDateString());
+
+            if (isSelDay) {
+                dayKwh += addedKwh;
+            }
             
             // Get Scaling Factor for this record
             let currentScale = niteScale;
@@ -749,37 +1016,65 @@ function calculateBillingCosts(rows) {
 
             let simulatedAddedKwh = addedKwh * currentScale;
             cycleSimKwh += simulatedAddedKwh;
+            if (isSelDay) {
+                daySimKwh += simulatedAddedKwh;
+            }
 
             const isTouPeak = isTouOnPeak(rDate);
             if (isTouPeak) {
                 cycleOnPeakKwh += addedKwh;
                 cycleOnPeakSimKwh += simulatedAddedKwh;
                 window.baselineOnPeakKwh = (window.baselineOnPeakKwh || 0) + addedKwh;
+                if (isSelDay) {
+                    dayOnPeakKwh += addedKwh;
+                    dayOnPeakSimKwh += simulatedAddedKwh;
+                    dayBaselineOnPeakKwh += addedKwh;
+                }
             } else {
                 cycleOffPeakKwh += addedKwh;
                 cycleOffPeakSimKwh += simulatedAddedKwh;
                 window.baselineOffPeakKwh = (window.baselineOffPeakKwh || 0) + addedKwh;
+                if (isSelDay) {
+                    dayOffPeakKwh += addedKwh;
+                    dayOffPeakSimKwh += simulatedAddedKwh;
+                    dayBaselineOffPeakKwh += addedKwh;
+                }
             }
 
             // Tracking Simulated Totals for Period Breakdown UI (Gross)
             if (hour >= 7 && hour < 17) {
                 window.cycleSolarSimTotal = (window.cycleSolarSimTotal || 0) + simulatedAddedKwh;
                 window.baselineSolarKwh = (window.baselineSolarKwh || 0) + addedKwh;
+                if (isSelDay) {
+                    daySolarSimTotal += simulatedAddedKwh;
+                    dayBaselineSolarKwh += addedKwh;
+                }
             } else if (hour >= 17 && hour < 22) {
                 window.cycleEveSimTotal = (window.cycleEveSimTotal || 0) + simulatedAddedKwh;
                 window.baselineEveKwh = (window.baselineEveKwh || 0) + addedKwh;
+                if (isSelDay) {
+                    dayEveSimTotal += simulatedAddedKwh;
+                    dayBaselineEveKwh += addedKwh;
+                }
             } else {
                 window.cycleNiteSimTotal = (window.cycleNiteSimTotal || 0) + simulatedAddedKwh;
                 window.baselineNiteKwh = (window.baselineNiteKwh || 0) + addedKwh;
+                if (isSelDay) {
+                    dayNiteSimTotal += simulatedAddedKwh;
+                    dayBaselineNiteKwh += addedKwh;
+                }
             }
 
             // Refined Periods (Tracking Actual for UI metrics)
             if (hour >= 7 && hour < 17) {
                 cycleSolarKwh += addedKwh;
+                if (isSelDay) daySolarKwh += addedKwh;
             } else if (hour >= 17 && hour < 22) {
                 cycleEveningKwh += addedKwh;
+                if (isSelDay) dayEveningKwh += addedKwh;
             } else {
                 cycleNightKwh += addedKwh;
+                if (isSelDay) dayNightKwh += addedKwh;
             }
             // Get interpolated values
             let rad = getWeatherInterpolated(rDate, window.meteoMap);
@@ -800,19 +1095,19 @@ function calculateBillingCosts(rows) {
             // Solar Cutoff logic: If irradiance is below cutoff, production is zero
             let solarEff = 0;
             if (rad >= SOLAR_RAD_CUTOFF) {
-                // Open-Meteo rad already includes cloud effects. Do NOT multiply by cloudFactor again.
                 solarEff = (rad / 1000); 
             } else if (rad < 0) {
-                // Fallback for missing weather data if it's daytime - apply cloudFactor here as SIN is ideal
                 solarEff = (hour >= 7 && hour <= 17) ? (Math.sin((hour - 7) * Math.PI / 10) * cloudFactor) : 0;
             }
             
             let solarProduced = solarPanelKw * sysEff * solarEff * 0.25; 
+            if (isSelDay) {
+                daySolarProduced += solarProduced;
+            }
             // Simulation is based on simulated usage
             let usageWithExtra = simulatedAddedKwh * (1 + EXTRA_USAGE_EST); 
             
             let excessSolar = solarProduced - usageWithExtra;
-            let gridImport = 0;
 
             if (rDate.toLocaleDateString('en-GB') === todayStr) {
                 todayKwh += addedKwh;
@@ -838,6 +1133,12 @@ function calculateBillingCosts(rows) {
             else if (isEve) cycleEveGridKwh = (cycleEveGridKwh || 0) + gridImportSim;
             else cycleNiteGridKwh = (cycleNiteGridKwh || 0) + gridImportSim;
 
+            if (isSelDay) {
+                daySolarGridKwh += gridImportSim;
+                if (isTouPeak) dayOnPeakGridKwh += gridImportSim;
+                else dayOffPeakGridKwh += gridImportSim;
+            }
+
             // --- Path B: Baseline (0% scales) ---
             let excessSolarBase = solarProduced - addedKwh;
             let gridImportBase = 0;
@@ -856,15 +1157,43 @@ function calculateBillingCosts(rows) {
             window.baselineNiteImport = (window.baselineNiteImport || 0) + (isNite ? gridImportBase : 0);
             if (isTouPeak) window.baselineOnPeakImport = (window.baselineOnPeakImport || 0) + gridImportBase;
             else window.baselineOffPeakImport = (window.baselineOffPeakImport || 0) + gridImportBase;
+
+            if (isSelDay) {
+                dayBaselineSolarGridKwh += gridImportBase;
+                if (isTouPeak) dayBaselineOnPeakImport += gridImportBase;
+                else dayBaselineOffPeakImport += gridImportBase;
+            }
         }
     }
 
-    let currentBill = (meterType === 'tou') ? calcMeaTou(cycleOnPeakKwh, cycleOffPeakKwh) : calcMeaProgressive(cycleKwh);
-    // Use pro-rated service charge for marginal pricing estimation
+    const cycleBill = (meterType === 'tou') ? calcMeaTou(cycleOnPeakKwh, cycleOffPeakKwh) : calcMeaProgressive(cycleKwh);
+    const cycleCbd = (meterType === 'tou') ? calcMeaTouBreakdown(cycleOnPeakKwh, cycleOffPeakKwh) : calcMeaBreakdown(cycleKwh);
+
+    let currentBill;
+    let cbd;
+    if (window.dashboardMode === 'daily') {
+        if (cycleKwh > 0) {
+            let ratio = dayKwh / cycleKwh;
+            currentBill = ratio * cycleBill;
+            cbd = {
+                base: ratio * cycleCbd.base,
+                ft: ratio * cycleCbd.ft,
+                service: ratio * cycleCbd.service,
+                vat: ratio * cycleCbd.vat,
+                total: ratio * cycleCbd.total
+            };
+        } else {
+            currentBill = 0;
+            cbd = { base: 0, ft: 0, service: 0, vat: 0, total: 0 };
+        }
+    } else {
+        currentBill = cycleBill;
+        cbd = cycleCbd;
+    }
+
     let cycleDaysElapsed = isPastCycle ? daysInCycle : Math.max(1, Math.floor((today.getTime() - startCycle.getTime()) / (24*3600*1000)));
     let proRateFactor = Math.min(1, cycleDaysElapsed / daysInCycle);
     
-    // blendedPricePerUnit is for estimating daily costs - exclude fixed service charge to keep it realistic
     window.blendedPricePerUnit = cycleKwh > 0 ? ((meterType === 'tou' ? calcMeaTouEnergyOnly(cycleOnPeakKwh, cycleOffPeakKwh) : calcMeaEnergy(cycleKwh)) / cycleKwh) : 4.4;
 
     document.getElementById('billing-cycle-date').innerText = `Billing Cycle starting ${startCycle.toLocaleDateString('en-GB')}`;
@@ -872,44 +1201,65 @@ function calculateBillingCosts(rows) {
     let cycleTotalDays = daysInCycle;
     let cyclePct = Math.min(100, Math.round((cycleDaysElapsed / cycleTotalDays) * 100));
     let cbDays = document.getElementById('cb-cycle-days');
-    if (cbDays) cbDays.textContent = `วันที่ ${cycleDaysElapsed} / ${cycleTotalDays}`;
+    if (cbDays) {
+        if (window.dashboardMode === 'daily') {
+            cbDays.textContent = selectedDate.toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit' });
+        } else {
+            cbDays.textContent = `วันที่ ${cycleDaysElapsed} / ${cycleTotalDays}`;
+        }
+    }
     let cbPct = document.getElementById('cb-cycle-pct');
-    if (cbPct) cbPct.textContent = `${cyclePct}%`;
+    if (cbPct) {
+        if (window.dashboardMode === 'daily') {
+            cbPct.textContent = '100%';
+        } else {
+            cbPct.textContent = `${cyclePct}%`;
+        }
+    }
     let cbBar = document.getElementById('cb-progress-bar');
-    if (cbBar) cbBar.style.width = `${cyclePct}%`;
+    if (cbBar) {
+        if (window.dashboardMode === 'daily') {
+            cbBar.style.width = '100%';
+        } else {
+            cbBar.style.width = `${cyclePct}%`;
+        }
+    }
     let cbKwh = document.getElementById('cb-kwh');
-    if (cbKwh) cbKwh.textContent = cycleKwh.toLocaleString('en-US', {maximumFractionDigits: 1});
+    if (cbKwh) {
+        let kwhVal = (window.dashboardMode === 'daily') ? dayKwh : cycleKwh;
+        cbKwh.textContent = kwhVal.toLocaleString('en-US', {maximumFractionDigits: 1});
+    }
     let cbAvg = document.getElementById('cb-avg-day');
-    if (cbAvg) cbAvg.textContent = (cycleKwh / cycleDaysElapsed).toLocaleString('en-US', {maximumFractionDigits: 1});
+    if (cbAvg && window.dashboardMode !== 'daily') cbAvg.textContent = (cycleKwh / cycleDaysElapsed).toLocaleString('en-US', {maximumFractionDigits: 1});
     let cbAvgCost = document.getElementById('cb-avg-cost');
-    if (cbAvgCost) cbAvgCost.textContent = (currentBill / cycleDaysElapsed).toLocaleString('en-US', {maximumFractionDigits: 0});
+    if (cbAvgCost && window.dashboardMode !== 'daily') cbAvgCost.textContent = (currentBill / cycleDaysElapsed).toLocaleString('en-US', {maximumFractionDigits: 0});
     
     let cbBase = document.getElementById('cb-base');
     if (cbBase) {
-        let cbd = (meterType === 'tou') ? calcMeaTouBreakdown(cycleOnPeakKwh, cycleOffPeakKwh) : calcMeaBreakdown(cycleKwh);
         cbBase.textContent = cbd.base.toLocaleString('en-US', {maximumFractionDigits: 0});
         document.getElementById('cb-svc-ft').textContent = (cbd.service + cbd.ft).toLocaleString('en-US', {maximumFractionDigits: 0});
         document.getElementById('cb-vat').textContent = cbd.vat.toLocaleString('en-US', {maximumFractionDigits: 0});
         
         // Update Refined Period UI
-        let solarPct = cycleKwh > 0 ? Math.round((cycleSolarKwh / cycleKwh) * 100) : 0;
-        let eveningPct = cycleKwh > 0 ? Math.round((cycleEveningKwh / cycleKwh) * 100) : 0;
-        let nightPct = cycleKwh > 0 ? Math.round((cycleNightKwh / cycleKwh) * 100) : 0;
+        let activeSolarVal = (window.dashboardMode === 'daily') ? daySolarKwh : cycleSolarKwh;
+        let activeEveningVal = (window.dashboardMode === 'daily') ? dayEveningKwh : cycleEveningKwh;
+        let activeNightVal = (window.dashboardMode === 'daily') ? dayNightKwh : cycleNightKwh;
+        let activeTotalVal = (window.dashboardMode === 'daily') ? dayKwh : cycleKwh;
         
-        document.getElementById('cb-solar-val').textContent = `${cycleSolarKwh.toFixed(1)} kWh (${solarPct}%)`;
-        document.getElementById('cb-evening-val').textContent = `${cycleEveningKwh.toFixed(1)} kWh (${eveningPct}%)`;
-        document.getElementById('cb-night-val').textContent = `${cycleNightKwh.toFixed(1)} kWh (${nightPct}%)`;
+        let solarPct = activeTotalVal > 0 ? Math.round((activeSolarVal / activeTotalVal) * 100) : 0;
+        let eveningPct = activeTotalVal > 0 ? Math.round((activeEveningVal / activeTotalVal) * 100) : 0;
+        let nightPct = activeTotalVal > 0 ? Math.round((activeNightVal / activeTotalVal) * 100) : 0;
+        
+        document.getElementById('cb-solar-val').textContent = `${activeSolarVal.toFixed(1)} kWh (${solarPct}%)`;
+        document.getElementById('cb-evening-val').textContent = `${activeEveningVal.toFixed(1)} kWh (${eveningPct}%)`;
+        document.getElementById('cb-night-val').textContent = `${activeNightVal.toFixed(1)} kWh (${nightPct}%)`;
     }
 
-    // Removed redundant blendedPricePerUnit calculation
-
     if (cycleCount > 0) {
-        // Estimation Accuracy Fix: Use fractional days elapsed instead of row counts
         let exactDaysElapsed = isPastCycle ? daysInCycle : (Math.max(1, today.getTime() - startCycle.getTime()) / (24*3600*1000));
         
-        // Estimate uses SIMULATED GRID IMPORT (Net)
-        let estFullMonthKwhActual = (cycleSimKwh / exactDaysElapsed) * daysInCycle; // Total needed
-        let estFullMonthKwhImport = (cycleSolarGridKwh / exactDaysElapsed) * daysInCycle; // Actually paid to grid
+        let estFullMonthKwhActual = (cycleSimKwh / exactDaysElapsed) * daysInCycle; 
+        let estFullMonthKwhImport = (cycleSolarGridKwh / exactDaysElapsed) * daysInCycle; 
 
         let estFullMonthOnPeakGross = (cycleOnPeakSimKwh / exactDaysElapsed) * daysInCycle;
         let estFullMonthOffPeakGross = (cycleOffPeakSimKwh / exactDaysElapsed) * daysInCycle;
@@ -920,38 +1270,78 @@ function calculateBillingCosts(rows) {
         let estFullMonthBillBase = (meterType === 'tou') ? calcMeaTou(estFullMonthOnPeakGross, estFullMonthOffPeakGross) : calcMeaProgressive(estFullMonthKwhActual);
         let estFullMonthBillNet = (meterType === 'tou') ? calcMeaTou(estFullMonthOnPeakImport, estFullMonthOffPeakImport) : calcMeaProgressive(estFullMonthKwhImport);
         
-        // UI REVERT: Show Gross Bill in center
+        const estBaselineGrossKwh = (cycleKwh / exactDaysElapsed) * daysInCycle;
+        const estBaselineOnPeakGross = (cycleOnPeakKwh / exactDaysElapsed) * daysInCycle;
+        const estBaselineOffPeakGross = (cycleOffPeakKwh / exactDaysElapsed) * daysInCycle;
+        const baselineGrossBill = (meterType === 'tou') ? calcMeaTou(estBaselineOnPeakGross, estBaselineOffPeakGross) : calcMeaProgressive(estBaselineGrossKwh);
+
+        const estBaselineOnPeakNet = (window.baselineOnPeakImport / exactDaysElapsed) * daysInCycle;
+        const estBaselineOffPeakNet = (window.baselineOffPeakImport / exactDaysElapsed) * daysInCycle;
+        const estBaselineNetKwh = (window.baselineSolarGridKwh / exactDaysElapsed) * daysInCycle;
+        const baselineNetBill = (meterType === 'tou') ? calcMeaTou(estBaselineOnPeakNet, estBaselineOffPeakNet) : calcMeaProgressive(estBaselineNetKwh);
+
+        let activeEstBill;
+        let activeEstKwh;
+        let activeSolarVal;
+        let activeEveningVal;
+        let activeNightVal;
+        
+        let activeSolarBase;
+        let activeEveningBase;
+        let activeNightBase;
+
+        let breakdownSim = { base: 0, ft: 0, service: 0, vat: 0, total: 0 };
+
+        if (window.dashboardMode === 'daily') {
+            const cycleSimBill = (meterType === 'tou') ? calcMeaTou(cycleOnPeakSimKwh, cycleOffPeakSimKwh) : calcMeaProgressive(cycleSimKwh);
+            const cycleCbdSim = (meterType === 'tou') ? calcMeaTouBreakdown(cycleOnPeakSimKwh, cycleOffPeakSimKwh) : calcMeaBreakdown(cycleSimKwh);
+            if (cycleSimKwh > 0) {
+                let ratio = daySimKwh / cycleSimKwh;
+                activeEstBill = ratio * cycleSimBill;
+                breakdownSim = {
+                    base: ratio * cycleCbdSim.base,
+                    ft: ratio * cycleCbdSim.ft,
+                    service: ratio * cycleCbdSim.service,
+                    vat: ratio * cycleCbdSim.vat,
+                    total: ratio * cycleCbdSim.total
+                };
+            } else {
+                activeEstBill = 0;
+            }
+            activeEstKwh = daySimKwh;
+            activeSolarVal = daySolarSimTotal;
+            activeEveningVal = dayEveSimTotal;
+            activeNightVal = dayNiteSimTotal;
+            
+            activeSolarBase = daySolarKwh;
+            activeEveningBase = dayEveningKwh;
+            activeNightBase = dayNightKwh;
+        } else {
+            activeEstBill = estFullMonthBillBase;
+            activeEstKwh = estFullMonthKwhActual;
+            activeSolarVal = (window.cycleSolarSimTotal / exactDaysElapsed) * daysInCycle;
+            activeEveningVal = (window.cycleEveSimTotal / exactDaysElapsed) * daysInCycle;
+            activeNightVal = (window.cycleNiteSimTotal / exactDaysElapsed) * daysInCycle;
+            
+            activeSolarBase = ((window.baselineSolarKwh || 0) / exactDaysElapsed) * daysInCycle;
+            activeEveningBase = ((window.baselineEveKwh || 0) / exactDaysElapsed) * daysInCycle;
+            activeNightBase = ((window.baselineNiteKwh || 0) / exactDaysElapsed) * daysInCycle;
+        }
+
         let ebEl = document.getElementById('est-bill');
-        if (ebEl) ebEl.innerText = estFullMonthBillBase.toLocaleString('en-US', {maximumFractionDigits: 0});
+        if (ebEl) ebEl.innerText = activeEstBill.toLocaleString('en-US', {maximumFractionDigits: 0});
 
         let estKwhEl = document.getElementById('est-kwh');
         if (estKwhEl) {
-            // Stats Alignment - Show GROSS usage for center card
-            document.getElementById('est-kwh').textContent = estFullMonthKwhActual.toLocaleString('en-US', {maximumFractionDigits: 0});
-            document.getElementById('est-avg-day').textContent = (estFullMonthKwhActual / daysInCycle).toFixed(1);
-            document.getElementById('est-avg-cost').textContent = (estFullMonthBillBase / daysInCycle).toFixed(0);
-
-            // Budget Progress based on GROSS Bill
-            let budgetPct = Math.round((estFullMonthBillBase / BUDGET_MONTHLY) * 100);
-            document.getElementById('est-budget-pct').textContent = `${budgetPct}%`;
-            document.getElementById('est-budget-bar').style.width = `${Math.min(100, budgetPct)}%`;
-            if (budgetPct > 100) document.getElementById('est-budget-bar').style.background = 'var(--glow-red)';
+            document.getElementById('est-kwh').textContent = activeEstKwh.toLocaleString('en-US', {maximumFractionDigits: 0});
+            if (window.dashboardMode !== 'daily') {
+                document.getElementById('est-avg-day').textContent = (activeEstKwh / daysInCycle).toFixed(1);
+                document.getElementById('est-avg-cost').textContent = (activeEstBill / daysInCycle).toFixed(0);
+            }
             
-            
-            // Project Full Month Gross per period using simulated totals
-            let estSolarGross = (window.cycleSolarSimTotal / exactDaysElapsed) * daysInCycle;
-            let estEveningGross = (window.cycleEveSimTotal / exactDaysElapsed) * daysInCycle;
-            let estNightGross = (window.cycleNiteSimTotal / exactDaysElapsed) * daysInCycle;
-
-            document.getElementById('est-solar-val').textContent = `${estSolarGross.toFixed(0)} kWh`;
-            document.getElementById('est-evening-val').textContent = `${estEveningGross.toFixed(0)} kWh`;
-            document.getElementById('est-night-val').textContent = `${estNightGross.toFixed(0)} kWh`;
-
-            // Unify Baseline tracking (ensure identical simulated path at 0% vs baseline path)
-            // For kWh deltas, we compare Projected Gross Sim vs Projected Gross Baseline
-            const dayBaseGrossProj = ((window.baselineSolarKwh || 0) / exactDaysElapsed) * daysInCycle;
-            const eveBaseGrossProj = ((window.baselineEveKwh || 0) / exactDaysElapsed) * daysInCycle;
-            const niteBaseGrossProj = ((window.baselineNiteKwh || 0) / exactDaysElapsed) * daysInCycle;
+            document.getElementById('est-solar-val').textContent = `${activeSolarVal.toFixed(0)} kWh`;
+            document.getElementById('est-evening-val').textContent = `${activeEveningVal.toFixed(0)} kWh`;
+            document.getElementById('est-night-val').textContent = `${activeNightVal.toFixed(0)} kWh`;
 
             const updateDeltaLabel = (id, currentVal, baseVal) => {
                 let el = document.getElementById(id);
@@ -967,12 +1357,10 @@ function calculateBillingCosts(rows) {
                 }
             };
 
-            // Single update point for period deltas (Comparing Gross vs Gross)
-            updateDeltaLabel('day-adj-cost', estSolarGross, dayBaseGrossProj);
-            updateDeltaLabel('evening-adj-cost', estEveningGross, eveBaseGrossProj);
-            updateDeltaLabel('night-adj-cost', estNightGross, niteBaseGrossProj);
+            updateDeltaLabel('day-adj-cost', activeSolarVal, activeSolarBase);
+            updateDeltaLabel('evening-adj-cost', activeEveningVal, activeEveningBase);
+            updateDeltaLabel('night-adj-cost', activeNightVal, activeNightBase);
 
-            // Update Header Deltas (Net changes)
             const updateHeaderDelta = (id, currentVal, baseVal) => {
                 let el = document.getElementById(id);
                 if (!el) return;
@@ -986,48 +1374,76 @@ function calculateBillingCosts(rows) {
                 }
             };
 
-            // Compare Simulated Gross vs Original Baseline Gross (actual raw data)
-            const estBaselineGrossKwh = (cycleKwh / exactDaysElapsed) * daysInCycle;
+            if (window.dashboardMode === 'daily') {
+                updateHeaderDelta('est-bill-delta', activeEstBill, currentBill);
+            } else {
+                updateHeaderDelta('est-bill-delta', estFullMonthBillBase, baselineGrossBill);
+            }
             
-            const estBaselineOnPeakGross = (cycleOnPeakKwh / exactDaysElapsed) * daysInCycle;
-            const estBaselineOffPeakGross = (cycleOffPeakKwh / exactDaysElapsed) * daysInCycle;
-            
-            const baselineGrossBill = (meterType === 'tou') ? calcMeaTou(estBaselineOnPeakGross, estBaselineOffPeakGross) : calcMeaProgressive(estBaselineGrossKwh);
-            updateHeaderDelta('est-bill-delta', estFullMonthBillBase, baselineGrossBill);
-            
-            // Compare Simulated Net vs Baseline Net (0% adjustment)
-            const estBaselineOnPeakNet = (window.baselineOnPeakImport / exactDaysElapsed) * daysInCycle;
-            const estBaselineOffPeakNet = (window.baselineOffPeakImport / exactDaysElapsed) * daysInCycle;
-            const estBaselineNetKwh = (window.baselineSolarGridKwh / exactDaysElapsed) * daysInCycle;
-            
-            const baselineNetBill = (meterType === 'tou') ? calcMeaTou(estBaselineOnPeakNet, estBaselineOffPeakNet) : calcMeaProgressive(estBaselineNetKwh);
-            updateHeaderDelta('solar-bill-delta', estFullMonthBillNet, baselineNetBill);
+            let dayNetBill = 0;
+            if (window.dashboardMode === 'daily') {
+                const cycleNetBill = (meterType === 'tou') ? calcMeaTou(cycleOnPeakGridKwh, cycleOffPeakGridKwh) : calcMeaProgressive(cycleSolarGridKwh);
+                if (cycleSolarGridKwh > 0) {
+                    dayNetBill = (daySolarGridKwh / cycleSolarGridKwh) * cycleNetBill;
+                }
+                
+                let dayBaselineNetBill = 0;
+                const cycleBaselineNetBill = (meterType === 'tou') ? calcMeaTou(window.baselineOnPeakImport, window.baselineOffPeakImport) : calcMeaProgressive(window.baselineSolarGridKwh);
+                if (window.baselineSolarGridKwh > 0) {
+                    dayBaselineNetBill = (dayBaselineSolarGridKwh / window.baselineSolarGridKwh) * cycleBaselineNetBill;
+                }
+                
+                updateHeaderDelta('solar-bill-delta', dayNetBill, dayBaselineNetBill);
+            } else {
+                updateHeaderDelta('solar-bill-delta', estFullMonthBillNet, baselineNetBill);
+            }
         }
 
         let bdBase = document.getElementById('bd-base-total');
         if (bdBase) {
-            const estFullMonthOnPeakSim = (cycleOnPeakSimKwh / exactDaysElapsed) * daysInCycle;
-            const estFullMonthOffPeakSim = (cycleOffPeakSimKwh / exactDaysElapsed) * daysInCycle;
-            
-            let breakdown = (meterType === 'tou') ? calcMeaTouBreakdown(estFullMonthOnPeakSim, estFullMonthOffPeakSim) : calcMeaBreakdown(estFullMonthKwhActual);
-            bdBase.innerText = breakdown.base.toLocaleString('en-US', {maximumFractionDigits: 0});
-            document.getElementById('bd-svc-ft-total').innerText = (breakdown.service + breakdown.ft).toLocaleString('en-US', {maximumFractionDigits: 0});
-            document.getElementById('bd-vat-total').innerText = breakdown.vat.toLocaleString('en-US', {maximumFractionDigits: 0});
+            let breakdownSimActive;
+            if (window.dashboardMode === 'daily') {
+                breakdownSimActive = breakdownSim;
+            } else {
+                const estFullMonthOnPeakSim = (cycleOnPeakSimKwh / exactDaysElapsed) * daysInCycle;
+                const estFullMonthOffPeakSim = (cycleOffPeakSimKwh / exactDaysElapsed) * daysInCycle;
+                breakdownSimActive = (meterType === 'tou') ? calcMeaTouBreakdown(estFullMonthOnPeakSim, estFullMonthOffPeakSim) : calcMeaBreakdown(estFullMonthKwhActual);
+            }
+            bdBase.innerText = breakdownSimActive.base.toLocaleString('en-US', {maximumFractionDigits: 0});
+            document.getElementById('bd-svc-ft-total').innerText = (breakdownSimActive.service + breakdownSimActive.ft).toLocaleString('en-US', {maximumFractionDigits: 0});
+            document.getElementById('bd-vat-total').innerText = breakdownSimActive.vat.toLocaleString('en-US', {maximumFractionDigits: 0});
         }
 
         let budgetWarning = document.getElementById('budget-warning');
         if (budgetWarning) {
-            if (estFullMonthBillBase > 3000) {
+            let limit = (window.dashboardMode === 'daily') ? 100 : 3000;
+            if (activeEstBill > limit) {
                 budgetWarning.style.display = 'block';
             } else {
                 budgetWarning.style.display = 'none';
             }
         }
 
+        let limit = (window.dashboardMode === 'daily') ? 100 : BUDGET_MONTHLY;
+        let budgetPct = Math.round((activeEstBill / limit) * 100);
+        document.getElementById('est-budget-pct').textContent = `${budgetPct}%`;
+        document.getElementById('est-budget-bar').style.width = `${Math.min(100, budgetPct)}%`;
+        if (budgetPct > 100) {
+            document.getElementById('est-budget-bar').style.background = 'var(--glow-red)';
+        } else {
+            document.getElementById('est-budget-bar').style.background = 'linear-gradient(90deg, var(--color-solar), #818cf8)';
+        }
+
         // Right Card (ROI) Updates
-        document.getElementById('solar-est-bill').innerText = estFullMonthBillNet.toLocaleString('en-US', {maximumFractionDigits: 0});
+        let activeNetBill;
+        if (window.dashboardMode === 'daily') {
+            activeNetBill = dayNetBill;
+        } else {
+            activeNetBill = estFullMonthBillNet;
+        }
+        document.getElementById('solar-est-bill').innerText = activeNetBill.toLocaleString('en-US', {maximumFractionDigits: 0});
         
-        let savings = estFullMonthBillBase - estFullMonthBillNet;
+        let cycleSavings = estFullMonthBillBase - estFullMonthBillNet;
         
         // Payback Calculation
         const investmentIn = document.getElementById('solarInvestment');
@@ -1035,8 +1451,8 @@ function calculateBillingCosts(rows) {
         let paybackEl = document.getElementById('payback-years');
         
         if (paybackEl) {
-            if (savings > 0 && investment > 0) {
-                let yearlySavings = savings * 12;
+            if (cycleSavings > 0 && investment > 0) {
+                let yearlySavings = cycleSavings * 12;
                 let years = investment / yearlySavings;
                 paybackEl.innerText = years.toFixed(1) + " ปี";
             } else {
@@ -1044,31 +1460,37 @@ function calculateBillingCosts(rows) {
             }
         }
 
-        // Solar card — production stats (True Monthly Totals)
         let solDailyKwh = document.getElementById('sol-daily-kwh');
         let solDailySaving = document.getElementById('sol-daily-saving');
         let solGridPct = document.getElementById('sol-grid-pct');
         
+        let activeSolarProduced = (window.dashboardMode === 'daily') ? daySolarProduced : (estFullMonthKwhActual - estFullMonthKwhImport);
         if (solDailyKwh) {
-            let monthlySolarProd = (estFullMonthKwhActual - estFullMonthKwhImport); 
-            solDailyKwh.textContent = monthlySolarProd.toLocaleString('en-US', {maximumFractionDigits: 0}) + ' kWh';
+            solDailyKwh.textContent = activeSolarProduced.toLocaleString('en-US', {maximumFractionDigits: 0}) + ' kWh';
         }
+        let activeSavings = (window.dashboardMode === 'daily') ? (activeEstBill - activeNetBill) : (estFullMonthBillBase - estFullMonthBillNet);
         if (solDailySaving) {
-            solDailySaving.textContent = savings.toLocaleString('en-US', {maximumFractionDigits: 0}) + ' บาท';
+            solDailySaving.textContent = activeSavings.toLocaleString('en-US', {maximumFractionDigits: 0}) + ' บาท';
         }
         if (solGridPct) {
-            let gridPct = estFullMonthKwhActual > 0 ? Math.round((estFullMonthKwhImport / estFullMonthKwhActual) * 100) : 0;
-            solGridPct.textContent = gridPct + '%';
+            let activeGridPct = 0;
+            if (window.dashboardMode === 'daily') {
+                activeGridPct = daySimKwh > 0 ? Math.round((daySolarGridKwh / daySimKwh) * 100) : 0;
+            } else {
+                activeGridPct = estFullMonthKwhActual > 0 ? Math.round((estFullMonthKwhImport / estFullMonthKwhActual) * 100) : 0;
+            }
+            solGridPct.textContent = activeGridPct + '%';
         }
     }
 
-    if (todayCount > 0) {
-        let estTodayFullKwh = (todayKwh / todayCount) * 96;
-        let todayCost = todayKwh * window.blendedPricePerUnit;
-        let estTodayFullCost = estTodayFullKwh * window.blendedPricePerUnit;
-
-        let uiTodayInfo = document.getElementById('today-cost');
-        if (uiTodayInfo) {
+    let uiTodayInfo = document.getElementById('today-cost');
+    if (uiTodayInfo) {
+        if (window.dashboardMode === 'daily') {
+            uiTodayInfo.innerHTML = `Selected Day: <strong style="color:var(--text-main)">${currentBill.toLocaleString('en-US', {maximumFractionDigits:1})}</strong> THB <span style="opacity:0.5">|</span> <strong style="color: var(--color-solar);">${dayKwh.toLocaleString('en-US', {maximumFractionDigits:1})}</strong> kWh`;
+        } else if (todayCount > 0) {
+            let estTodayFullKwh = (todayKwh / todayCount) * 96;
+            let todayCost = todayKwh * window.blendedPricePerUnit;
+            let estTodayFullCost = estTodayFullKwh * window.blendedPricePerUnit;
             let dailyBenchmark = 100; 
             let isOver = estTodayFullCost > dailyBenchmark;
             let estColor = isOver ? 'var(--glow-red)' : 'var(--glow-green)';
@@ -1097,7 +1519,12 @@ function calculateHistoricalAverages(rows) {
         let rDate = parseRowDate(r[0]);
         if (isNaN(rDate.getTime())) return;
         
-        let dateKey = rDate.toISOString().split('T')[0];
+        let checkDate = new Date(rDate.getTime() - 7 * 3600 * 1000);
+        let y = checkDate.getFullYear();
+        let m = String(checkDate.getMonth() + 1).padStart(2, '0');
+        let d = String(checkDate.getDate()).padStart(2, '0');
+        let dateKey = `${y}-${m}-${d}`;
+
         if (!dayTotals[dateKey]) {
             dayTotals[dateKey] = { solar: 0, eve: 0, nite: 0 };
         }
@@ -1143,6 +1570,9 @@ function calculateHistoricalAverages(rows) {
     setAvg('hist-solar-avg', avgSolar, 'hist-solar-pct', solarPct);
     setAvg('hist-eve-avg', avgEve, 'hist-eve-pct', evePct);
     setAvg('hist-nite-avg', avgNite, 'hist-nite-pct', nitePct);
+    
+    let elTotal = document.getElementById('hist-total-avg');
+    if (elTotal) elTotal.textContent = totalAvg.toFixed(1) + ' kWh';
 }
 
 function renderChart(rows) {
@@ -1164,8 +1594,12 @@ function renderChart(rows) {
     if (timeRange === 'custom_date') {
         const dateInput = document.getElementById('customDateInput');
         if (dateInput && dateInput.value) {
-            rangeStart = new Date(dateInput.value);
-            rangeStart.setHours(0,0,0,0);
+            rangeStart = parseLocalDate(dateInput.value);
+            if (window.dashboardMode === 'daily') {
+                rangeStart.setHours(7,0,0,0);
+            } else {
+                rangeStart.setHours(0,0,0,0);
+            }
             viewingDate = new Date(rangeStart);
         }
         durationDays = 1;
